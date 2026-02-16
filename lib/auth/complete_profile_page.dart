@@ -47,12 +47,6 @@ class _CompleteVendorProfilePageState extends State<CompleteVendorProfilePage> {
       if (metaName != null) {
         _nameController.text = metaName.toString();
       }
-
-      // Get role from signup metadata
-      final metaRole = user.userMetadata?['role'];
-      if (metaRole != null) {
-        _userRole = metaRole.toString();
-      }
     }
   }
 
@@ -376,6 +370,18 @@ class _CompleteVendorProfilePageState extends State<CompleteVendorProfilePage> {
                         ),
                         const SizedBox(height: 32),
 
+                        // Account Type Selection
+                        Text(
+                          "Account Type",
+                          style: TextStyle(
+                            color: Colors.grey[300],
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        _buildRoleDropdown(),
+                        const SizedBox(height: 32),
+
                         // Address Section
                         Text(
                           "Business Address",
@@ -591,6 +597,141 @@ class _CompleteVendorProfilePageState extends State<CompleteVendorProfilePage> {
           ),
         ),
       ),
+    );
+  }
+
+  // Account Type Dropdown
+  Widget _buildRoleDropdown() {
+    const amberColor = Color(0xFFFFC107);
+    const amberIconColor = Color(0xB3FFC107);
+    const fieldBgColor = Color(0x0DFFFFFF);
+    const fieldBorderColor = Color(0x1AFFFFFF);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: fieldBgColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: fieldBorderColor),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: DropdownButtonFormField<String>(
+        value: _userRole,
+        dropdownColor: const Color(0xFF1A1A1A),
+        icon: const Icon(Icons.arrow_drop_down, color: amberColor),
+        decoration: const InputDecoration(
+          border: InputBorder.none,
+          prefixIcon: Icon(Icons.badge, color: amberIconColor),
+        ),
+        style: const TextStyle(color: Colors.white, fontSize: 15),
+        items: [
+          DropdownMenuItem(
+            value: 'venue_distributor',
+            child: _buildDropdownItem(
+              icon: Icons.business,
+              title: 'Venue Distributor',
+              subtitle: 'Manage wedding venues',
+            ),
+          ),
+          DropdownMenuItem(
+            value: 'vendor_distributor',
+            child: _buildDropdownItem(
+              icon: Icons.store,
+              title: 'Vendor Services',
+              subtitle: 'Catering, photography, etc.',
+            ),
+          ),
+          DropdownMenuItem(
+            value: 'venue_vendor_distributor',
+            child: _buildDropdownItem(
+              icon: Icons.business_center,
+              title: 'Both (Venue & Services)',
+              subtitle: 'Combined access',
+            ),
+          ),
+          DropdownMenuItem(
+            value: 'admin',
+            child: _buildDropdownItem(
+              icon: Icons.admin_panel_settings,
+              title: 'Admin Account',
+              subtitle: 'Requires approval',
+              isSpecial: true,
+            ),
+          ),
+        ],
+        onChanged: (value) {
+          if (value != null) {
+            setState(() => _userRole = value);
+          }
+        },
+      ),
+    );
+  }
+
+  Widget _buildDropdownItem({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    bool isSpecial = false,
+  }) {
+    const amberColor = Color(0xFFFFC107);
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, color: amberColor, size: 20),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (isSpecial) ...[
+                    const SizedBox(width: 4),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 3,
+                        vertical: 1,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                      child: const Text(
+                        'APPROVAL',
+                        style: TextStyle(
+                          color: Colors.orange,
+                          fontSize: 7,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              Text(
+                subtitle,
+                style: TextStyle(color: Colors.grey[500], fontSize: 10),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
