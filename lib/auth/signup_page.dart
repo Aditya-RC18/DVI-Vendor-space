@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../services/auth_service.dart';
 import '../utils/validators.dart';
 import '../widgets/password_strength_indicator.dart';
 import '../widgets/oauth_button.dart';
@@ -169,30 +170,48 @@ class _SignupPageState extends State<SignupPage> {
                             ),
                             const SizedBox(height: 32),
 
-                            // OAuth Buttons (Placeholders)
+                            // OAuth Buttons
                             OAuthButton(
                               provider: 'google',
-                              onPressed: () {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'Google Sign-In coming soon! Configure OAuth in Supabase first.',
-                                    ),
-                                  ),
-                                );
+                              onPressed: () async {
+                                try {
+                                  setState(() => _isLoading = true);
+                                  await AuthService().signInWithGoogle();
+                                } catch (e) {
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          "Google Sign-In failed: $e",
+                                        ),
+                                        backgroundColor: Colors.red,
+                                      ),
+                                    );
+                                    setState(() => _isLoading = false);
+                                  }
+                                }
                               },
                             ),
                             const SizedBox(height: 12),
                             OAuthButton(
                               provider: 'facebook',
-                              onPressed: () {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'Facebook Sign-In coming soon! Configure OAuth in Supabase first.',
-                                    ),
-                                  ),
-                                );
+                              onPressed: () async {
+                                try {
+                                  setState(() => _isLoading = true);
+                                  await AuthService().signInWithFacebook();
+                                } catch (e) {
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          "Facebook Sign-In failed: $e",
+                                        ),
+                                        backgroundColor: Colors.red,
+                                      ),
+                                    );
+                                    setState(() => _isLoading = false);
+                                  }
+                                }
                               },
                             ),
                             const SizedBox(height: 24),

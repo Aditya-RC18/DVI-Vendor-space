@@ -57,6 +57,30 @@ class AuthService {
     }
   }
 
+  Future<bool> signInWithGoogle() async {
+    try {
+      return await _supabase.auth.signInWithOAuth(
+        OAuthProvider.google,
+        redirectTo: 'io.supabase.flutter://signin-callback/',
+      );
+    } catch (e) {
+      debugPrint('❌ Google sign-in error: $e');
+      rethrow;
+    }
+  }
+
+  Future<bool> signInWithFacebook() async {
+    try {
+      return await _supabase.auth.signInWithOAuth(
+        OAuthProvider.facebook,
+        redirectTo: 'io.supabase.flutter://signin-callback/',
+      );
+    } catch (e) {
+      debugPrint('❌ Facebook sign-in error: $e');
+      rethrow;
+    }
+  }
+
   Future<void> signOut() async {
     await _supabase.auth.signOut();
     final prefs = await SharedPreferences.getInstance();

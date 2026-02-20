@@ -167,27 +167,45 @@ class _LoginPageState extends State<LoginPage> {
                         // OAuth Buttons (Placeholders)
                         OAuthButton(
                           provider: 'google',
-                          onPressed: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'Google Sign-In coming soon! Configure OAuth in Supabase first.',
-                                ),
-                              ),
-                            );
+                          onPressed: () async {
+                            try {
+                              setState(() => _isLoading = true);
+                              // Ensure the user comes back to the app after sign in
+                              await _authService.signInWithGoogle();
+                              // Navigation is handled by AuthWrapper or stream listener
+                            } catch (e) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text("Google Sign-In failed: $e"),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                                setState(() => _isLoading = false);
+                              }
+                            }
                           },
                         ),
                         const SizedBox(height: 12),
                         OAuthButton(
                           provider: 'facebook',
-                          onPressed: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'Facebook Sign-In coming soon! Configure OAuth in Supabase first.',
-                                ),
-                              ),
-                            );
+                          onPressed: () async {
+                            try {
+                              setState(() => _isLoading = true);
+                              await _authService.signInWithFacebook();
+                            } catch (e) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      "Facebook Sign-In failed: $e",
+                                    ),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                                setState(() => _isLoading = false);
+                              }
+                            }
                           },
                         ),
                         const SizedBox(height: 24),
