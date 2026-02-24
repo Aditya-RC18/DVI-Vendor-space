@@ -92,6 +92,11 @@ class VenueDataService {
       final data = venue.toJson();
       data['updated_at'] = DateTime.now().toIso8601String();
 
+      // Remove empty string UUIDs to prevent validation errors
+      if (data['vendor_id'] == null || data['vendor_id'] == '') {
+        data.remove('vendor_id');
+      }
+
       final response = await _supabase
           .from('venue_data')
           .update(data)

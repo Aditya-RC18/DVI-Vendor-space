@@ -10,6 +10,8 @@ class VendorProfile {
   final String? identificationUrl;
   final String verificationStatus;
   final String? rejectionReason;
+  final String
+  role; // admin, venue_distributor, vendor_distributor, venue_vendor_distributor
 
   VendorProfile({
     required this.id,
@@ -23,6 +25,7 @@ class VendorProfile {
     this.identificationUrl,
     this.verificationStatus = 'pending',
     this.rejectionReason,
+    this.role = 'venue_distributor', // Default role
   });
 
   factory VendorProfile.fromJson(Map<String, dynamic> json) {
@@ -38,6 +41,7 @@ class VendorProfile {
       identificationUrl: json['identification_url'],
       verificationStatus: json['verification_status'] ?? 'pending',
       rejectionReason: json['rejection_reason'],
+      role: json['role'] ?? 'venue_distributor',
     );
   }
 
@@ -54,6 +58,44 @@ class VendorProfile {
       'identification_url': identificationUrl,
       'verification_status': verificationStatus,
       'rejection_reason': rejectionReason,
+      'role': role,
     };
   }
+
+  VendorProfile copyWith({
+    String? id,
+    String? fullName,
+    String? email,
+    String? phone,
+    String? address,
+    String? city,
+    String? state,
+    String? pincode,
+    String? identificationUrl,
+    String? verificationStatus,
+    String? rejectionReason,
+    String? role,
+  }) {
+    return VendorProfile(
+      id: id ?? this.id,
+      fullName: fullName ?? this.fullName,
+      email: email ?? this.email,
+      phone: phone ?? this.phone,
+      address: address ?? this.address,
+      city: city ?? this.city,
+      state: state ?? this.state,
+      pincode: pincode ?? this.pincode,
+      identificationUrl: identificationUrl ?? this.identificationUrl,
+      verificationStatus: verificationStatus ?? this.verificationStatus,
+      rejectionReason: rejectionReason ?? this.rejectionReason,
+      role: role ?? this.role,
+    );
+  }
+
+  // Role-based permission helpers
+  bool get isAdmin => role == 'admin';
+  bool get canManageVenues =>
+      role == 'venue_distributor' || role == 'venue_vendor_distributor';
+  bool get canManageVendorServices =>
+      role == 'vendor_distributor' || role == 'venue_vendor_distributor';
 }

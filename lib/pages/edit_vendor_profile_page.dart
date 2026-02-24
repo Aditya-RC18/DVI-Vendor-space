@@ -27,11 +27,13 @@ class _EditVendorProfilePageState extends State<EditVendorProfilePage> {
 
   String _selectedCountryCode = '91';
   File? _idDocument;
+  late String _selectedRole;
 
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.profile.fullName);
+    _selectedRole = widget.profile.role; // Initialize with current role
 
     // Parse phone number to extract country code if possible
     String rawPhone = widget.profile.phone;
@@ -161,6 +163,7 @@ class _EditVendorProfilePageState extends State<EditVendorProfilePage> {
             'state': _stateController.text,
             'pincode': _pincodeController.text,
             'identification_url': docPath,
+            'role': _selectedRole, // Update role
             // Resubmit for verification if rejected
             'verification_status':
                 widget.profile.verificationStatus == 'rejected'
@@ -213,6 +216,10 @@ class _EditVendorProfilePageState extends State<EditVendorProfilePage> {
                       ),
                       validator: Validators.validateFullName,
                     ),
+                    const SizedBox(height: 20),
+
+                    // Role Selection
+                    _buildRoleSelector(),
                     const SizedBox(height: 15),
 
                     Row(
@@ -380,6 +387,134 @@ class _EditVendorProfilePageState extends State<EditVendorProfilePage> {
                   child: CircularProgressIndicator(color: Colors.amber),
                 ),
               ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRoleSelector() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          "Account Type",
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 12),
+        _buildRoleOption(
+          value: 'venue_distributor',
+          title: 'Venue Distributor',
+          description: 'Manage wedding venues',
+          icon: Icons.business,
+        ),
+        const SizedBox(height: 8),
+        _buildRoleOption(
+          value: 'vendor_distributor',
+          title: 'Vendor Services',
+          description: 'Manage vendor services (catering, photography, etc.)',
+          icon: Icons.store,
+        ),
+        const SizedBox(height: 8),
+        _buildRoleOption(
+          value: 'venue_vendor_distributor',
+          title: 'Both (Venue & Services)',
+          description: 'Combined access to venues and services',
+          icon: Icons.business_center,
+        ),
+        const SizedBox(height: 8),
+        _buildRoleOption(
+          value: 'admin',
+          title: 'Admin Account',
+          description: 'Full system access (requires admin approval)',
+          icon: Icons.admin_panel_settings,
+          isSpecial: true,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRoleOption({
+    required String value,
+    required String title,
+    required String description,
+    required IconData icon,
+    bool isSpecial = false,
+  }) {
+    final isSelected = _selectedRole == value;
+    return GestureDetector(
+      onTap: () => setState(() => _selectedRole = value),
+      child: Container(
+        decoration: BoxDecoration(
+          color: isSelected
+              ? Colors.amber.withOpacity(0.1)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? Colors.amber : Colors.grey.shade300,
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              color: isSelected ? Colors.amber : Colors.grey[600],
+              size: 28,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          color: isSelected ? Colors.amber : Colors.black87,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                        ),
+                      ),
+                      if (isSpecial) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            'APPROVAL REQUIRED',
+                            style: TextStyle(
+                              color: Colors.orange,
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    description,
+                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            Radio<String>(
+              value: value,
+              groupValue: _selectedRole,
+              onChanged: (v) => setState(() => _selectedRole = v!),
+              activeColor: Colors.amber,
+            ),
           ],
         ),
       ),

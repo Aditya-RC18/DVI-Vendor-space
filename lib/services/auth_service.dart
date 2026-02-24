@@ -57,6 +57,30 @@ class AuthService {
     }
   }
 
+  Future<bool> signInWithGoogle() async {
+    try {
+      return await _supabase.auth.signInWithOAuth(
+        OAuthProvider.google,
+        redirectTo: 'io.supabase.flutter://signin-callback/',
+      );
+    } catch (e) {
+      debugPrint('❌ Google sign-in error: $e');
+      rethrow;
+    }
+  }
+
+  Future<bool> signInWithFacebook() async {
+    try {
+      return await _supabase.auth.signInWithOAuth(
+        OAuthProvider.facebook,
+        redirectTo: 'io.supabase.flutter://signin-callback/',
+      );
+    } catch (e) {
+      debugPrint('❌ Facebook sign-in error: $e');
+      rethrow;
+    }
+  }
+
   Future<void> signOut() async {
     await _supabase.auth.signOut();
     final prefs = await SharedPreferences.getInstance();
@@ -94,5 +118,22 @@ class AuthService {
       debugPrint('⚠️ Failed to get vendor profile: $e');
       return null;
     }
+  }
+
+  /// Check if current user is admin
+  Future<bool> isAdmin() async {
+    final profile = await getVendorProfile();
+    return profile?.isAdmin ?? false;
+  }
+
+  /// Get current user's role
+  Future<String?> getUserRole() async {
+    final profile = await getVendorProfile();
+    return profile?.role;
+  }
+
+  /// Get current user ID
+  String? getCurrentUserId() {
+    return _supabase.auth.currentUser?.id;
   }
 }

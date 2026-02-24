@@ -1,9 +1,11 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import '../models/venue_data.dart';
 import '../services/venue_data_service.dart';
+import '../services/auth_service.dart';
 import 'location_picker_page.dart';
 
 /// Page for creating or editing a venue
@@ -27,6 +29,10 @@ class _VenueFormPageState extends State<VenueFormPage> {
   final _basePriceController = TextEditingController();
   final _venueDiscountController = TextEditingController();
   final _policiesController = TextEditingController();
+  final _capacityController = TextEditingController();
+  final _phoneController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _vendorNameController = TextEditingController();
 
   // Category
   String? _selectedCategory;
@@ -65,6 +71,25 @@ class _VenueFormPageState extends State<VenueFormPage> {
     super.initState();
     if (isEditMode) {
       _loadExistingData();
+    } else {
+      _loadVendorContactInfo();
+    }
+  }
+
+  // Load vendor contact info for autocapture
+  Future<void> _loadVendorContactInfo() async {
+    try {
+      final authService = AuthService();
+      final profile = await authService.getVendorProfile();
+      if (profile != null && mounted) {
+        setState(() {
+          _phoneController.text = profile.phone;
+          _emailController.text = profile.email;
+          _vendorNameController.text = profile.fullName;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading vendor profile: $e');
     }
   }
 
@@ -76,9 +101,13 @@ class _VenueFormPageState extends State<VenueFormPage> {
     _basePriceController.text = venue.basePrice.toString();
     _venueDiscountController.text = venue.venueDiscountPercent.toString();
     _policiesController.text = venue.policies ?? '';
+    _capacityController.text = venue.capacity?.toString() ?? '';
     _latitude = venue.latitude;
     _longitude = venue.longitude;
     _locationAddress = venue.locationAddress;
+    _phoneController.text = venue.uploaderPhone ?? '';
+    _emailController.text = venue.uploaderEmail ?? '';
+    _vendorNameController.text = venue.vendorName ?? '';
 
     // Load existing services
     _services = venue.services
@@ -113,6 +142,10 @@ class _VenueFormPageState extends State<VenueFormPage> {
     _basePriceController.dispose();
     _venueDiscountController.dispose();
     _policiesController.dispose();
+    _capacityController.dispose();
+    _phoneController.dispose();
+    _emailController.dispose();
+    _vendorNameController.dispose();
     for (final s in _services) {
       s.dispose();
     }
@@ -251,6 +284,9 @@ class _VenueFormPageState extends State<VenueFormPage> {
         venueDiscountPercent:
             double.tryParse(_venueDiscountController.text) ?? 0,
         policies: _policiesController.text.trim(),
+        capacity: int.tryParse(_capacityController.text),
+        uploaderPhone: _phoneController.text.trim(),
+        uploaderEmail: _emailController.text.trim(),
       );
 
       VenueData? savedVenue;
@@ -398,6 +434,63 @@ class _VenueFormPageState extends State<VenueFormPage> {
             alignLabelWithHint: true,
           ),
           maxLines: 4,
+        ),
+        const SizedBox(height: 16),
+        TextFormField(
+          controller: _capacityController,
+          decoration: const InputDecoration(
+            labelText: 'Venue Capacity',
+            border: OutlineInputBorder(),
+            hintText: 'Maximum number of guests',
+            prefixIcon: Icon(Icons.people),
+          ),
+          keyboardType: TextInputType.number,
+        ),
+        const SizedBox(height: 16),
+        Text(
+          'Contact Information',
+          style: GoogleFonts.urbanist(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: Colors.grey[700],
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'These details will be visible to customers viewing this venue',
+          style: GoogleFonts.urbanist(fontSize: 12, color: Colors.grey[600]),
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          controller: _vendorNameController,
+          decoration: const InputDecoration(
+            labelText: 'Vendor/Business Name',
+            border: OutlineInputBorder(),
+            prefixIcon: Icon(Icons.business),
+            hintText: 'Your business or company name',
+          ),
+        ),
+        const SizedBox(height: 16),
+        TextFormField(
+          controller: _phoneController,
+          decoration: const InputDecoration(
+            labelText: 'Contact Phone',
+            border: OutlineInputBorder(),
+            prefixIcon: Icon(Icons.phone),
+            hintText: 'Phone number for this venue',
+          ),
+          keyboardType: TextInputType.phone,
+        ),
+        const SizedBox(height: 16),
+        TextFormField(
+          controller: _emailController,
+          decoration: const InputDecoration(
+            labelText: 'Contact Email',
+            border: OutlineInputBorder(),
+            prefixIcon: Icon(Icons.email),
+            hintText: 'Email address for this venue',
+          ),
+          keyboardType: TextInputType.emailAddress,
         ),
       ],
     );
@@ -654,6 +747,18 @@ class _VenueFormPageState extends State<VenueFormPage> {
                               isDense: true,
                             ),
                             keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                            ],
+                            validator: (v) {
+                              if (v != null && v.isNotEmpty) {
+                                final val = int.tryParse(v);
+                                if (val == null || val < 0 || val > 100) {
+                                  return 'Must be 0-100';
+                                }
+                              }
+                              return null;
+                            },
                             onChanged: (_) => setState(() {}),
                           ),
                         ),
@@ -694,8 +799,19 @@ class _VenueFormPageState extends State<VenueFormPage> {
                 decoration: const InputDecoration(
                   labelText: 'Venue Discount %',
                   border: OutlineInputBorder(),
+                  hintText: '0-100',
                 ),
                 keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                validator: (v) {
+                  if (v != null && v.isNotEmpty) {
+                    final val = int.tryParse(v);
+                    if (val == null || val < 0 || val > 100) {
+                      return 'Must be 0-100';
+                    }
+                  }
+                  return null;
+                },
                 onChanged: (_) => setState(() {}),
               ),
             ),

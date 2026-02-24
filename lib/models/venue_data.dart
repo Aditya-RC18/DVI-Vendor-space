@@ -14,8 +14,14 @@ class VenueData {
   final String? policies;
   final double? rating;
   final int reviewCount;
+  final int? capacity; // Venue capacity
   final DateTime? createdAt;
   final DateTime? updatedAt;
+
+  // Uploader contact info (for display purposes)
+  final String? uploaderPhone;
+  final String? uploaderEmail;
+  final String? vendorName;
 
   // Related data (loaded separately)
   List<VenueService> services;
@@ -35,8 +41,12 @@ class VenueData {
     this.policies,
     this.rating,
     this.reviewCount = 0,
+    this.capacity,
     this.createdAt,
     this.updatedAt,
+    this.uploaderPhone,
+    this.uploaderEmail,
+    this.vendorName,
     this.services = const [],
     this.galleryImages = const [],
   });
@@ -56,12 +66,16 @@ class VenueData {
       policies: json['policies'],
       rating: json['rating']?.toDouble(),
       reviewCount: json['review_count'] ?? 0,
+      capacity: json['capacity'],
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'])
           : null,
       updatedAt: json['updated_at'] != null
           ? DateTime.parse(json['updated_at'])
           : null,
+      uploaderPhone: json['uploader_phone'],
+      uploaderEmail: json['uploader_email'],
+      vendorName: json['vendor_name'],
     );
   }
 
@@ -78,6 +92,10 @@ class VenueData {
       'base_price': basePrice,
       'venue_discount_percent': venueDiscountPercent,
       'policies': policies,
+      'capacity': capacity,
+      'uploader_phone': uploaderPhone,
+      'uploader_email': uploaderEmail,
+      'vendor_name': vendorName,
       // rating and review_count are not included as they're managed by the system
     };
   }
@@ -110,6 +128,9 @@ class VenueData {
     String? policies,
     double? rating,
     int? reviewCount,
+    int? capacity,
+    String? uploaderPhone,
+    String? uploaderEmail,
     List<VenueService>? services,
     List<VenueGalleryImage>? galleryImages,
   }) {
@@ -127,6 +148,9 @@ class VenueData {
       policies: policies ?? this.policies,
       rating: rating ?? this.rating,
       reviewCount: reviewCount ?? this.reviewCount,
+      capacity: capacity ?? this.capacity,
+      uploaderPhone: uploaderPhone ?? this.uploaderPhone,
+      uploaderEmail: uploaderEmail ?? this.uploaderEmail,
       services: services ?? this.services,
       galleryImages: galleryImages ?? this.galleryImages,
     );

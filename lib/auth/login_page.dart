@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_service.dart';
 import '../utils/constants.dart';
 import '../utils/validators.dart';
+import '../widgets/oauth_button.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -20,6 +21,13 @@ class _LoginPageState extends State<LoginPage> {
   bool _isPasswordVisible = false;
   bool _rememberMe = false;
   bool _isLoading = false;
+
+  // Pre-calculated colors to avoid rebuilding on every keystroke
+  static const _fieldBgColor = Color(0x0DFFFFFF); // white with 0.05 opacity
+  static const _fieldBorderColor = Color(0x1AFFFFFF); // white with 0.1 opacity
+  static const _amberColor = Color(0xFFFFC107);
+  static const _amberIconColor = Color(0xB3FFC107); // amber with 0.7 opacity
+  static const _amberGlowColor = Color(0x26FFC107); // amber with 0.15 opacity
 
   @override
   void initState() {
@@ -111,20 +119,17 @@ class _LoginPageState extends State<LoginPage> {
         ),
         child: Stack(
           children: [
-            // Background Elements (Circles)
+            // Background Elements (Circles) - const to avoid rebuilding
             Positioned(
               top: -size.height * 0.15,
               left: -size.width * 0.2,
               child: Container(
                 width: size.width * 0.7,
                 height: size.width * 0.7,
-                decoration: BoxDecoration(
+                decoration: const BoxDecoration(
                   shape: BoxShape.circle,
                   gradient: RadialGradient(
-                    colors: [
-                      Colors.amber.withOpacity(0.15),
-                      Colors.transparent,
-                    ],
+                    colors: [_amberGlowColor, Colors.transparent],
                   ),
                 ),
               ),
@@ -139,12 +144,12 @@ class _LoginPageState extends State<LoginPage> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Text(
+                        const Text(
                           "Vendor Portal",
                           style: TextStyle(
                             fontSize: 32,
                             fontWeight: FontWeight.w800,
-                            color: Colors.amber[400],
+                            color: _amberColor,
                           ),
                           textAlign: TextAlign.center,
                         ),
@@ -158,6 +163,73 @@ class _LoginPageState extends State<LoginPage> {
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 48),
+
+                        // OAuth Buttons (Placeholders)
+                        OAuthButton(
+                          provider: 'google',
+                          onPressed: () async {
+                            try {
+                              setState(() => _isLoading = true);
+                              // Ensure the user comes back to the app after sign in
+                              await _authService.signInWithGoogle();
+                              // Navigation is handled by AuthWrapper or stream listener
+                            } catch (e) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text("Google Sign-In failed: $e"),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                                setState(() => _isLoading = false);
+                              }
+                            }
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        OAuthButton(
+                          provider: 'facebook',
+                          onPressed: () async {
+                            try {
+                              setState(() => _isLoading = true);
+                              await _authService.signInWithFacebook();
+                            } catch (e) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      "Facebook Sign-In failed: $e",
+                                    ),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                                setState(() => _isLoading = false);
+                              }
+                            }
+                          },
+                        ),
+                        const SizedBox(height: 24),
+
+                        // Divider
+                        Row(
+                          children: [
+                            Expanded(child: Divider(color: Colors.grey[700])),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                              ),
+                              child: Text(
+                                'OR',
+                                style: TextStyle(
+                                  color: Colors.grey[500],
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            Expanded(child: Divider(color: Colors.grey[700])),
+                          ],
+                        ),
+                        const SizedBox(height: 24),
 
                         _buildTextField(
                           label: "Email Address",
@@ -174,7 +246,7 @@ class _LoginPageState extends State<LoginPage> {
                           children: [
                             Checkbox(
                               value: _rememberMe,
-                              activeColor: Colors.amber,
+                              activeColor: _amberColor,
                               onChanged: (v) =>
                                   setState(() => _rememberMe = v ?? false),
                             ),
@@ -188,7 +260,7 @@ class _LoginPageState extends State<LoginPage> {
                         ElevatedButton(
                           onPressed: _isLoading ? null : _handleLogin,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.amber,
+                            backgroundColor: _amberColor,
                             foregroundColor: Colors.black,
                             padding: const EdgeInsets.symmetric(vertical: 16),
                             shape: RoundedRectangleBorder(
@@ -211,9 +283,9 @@ class _LoginPageState extends State<LoginPage> {
                             context,
                             AppConstants.signupRoute,
                           ),
-                          child: Text(
+                          child: const Text(
                             "Don't have an account? Sign Up",
-                            style: TextStyle(color: Colors.amber[400]),
+                            style: TextStyle(color: _amberColor),
                           ),
                         ),
                       ],
@@ -248,10 +320,10 @@ class _LoginPageState extends State<LoginPage> {
         ),
         const SizedBox(height: 8),
         Container(
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.05),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white.withOpacity(0.1)),
+          decoration: const BoxDecoration(
+            color: _fieldBgColor,
+            borderRadius: BorderRadius.all(Radius.circular(12)),
+            border: Border.fromBorderSide(BorderSide(color: _fieldBorderColor)),
           ),
           child: TextFormField(
             controller: controller,
@@ -262,10 +334,7 @@ class _LoginPageState extends State<LoginPage> {
               hintText: hint,
               hintStyle: TextStyle(color: Colors.grey[500]),
               border: InputBorder.none,
-              prefixIcon: Icon(
-                prefixIcon,
-                color: Colors.amber.withOpacity(0.7),
-              ),
+              prefixIcon: Icon(prefixIcon, color: _amberIconColor),
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: 16,
                 vertical: 16,
@@ -290,10 +359,10 @@ class _LoginPageState extends State<LoginPage> {
         ),
         const SizedBox(height: 8),
         Container(
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.05),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white.withOpacity(0.1)),
+          decoration: const BoxDecoration(
+            color: _fieldBgColor,
+            borderRadius: BorderRadius.all(Radius.circular(12)),
+            border: Border.fromBorderSide(BorderSide(color: _fieldBorderColor)),
           ),
           child: TextFormField(
             controller: _passwordController,
@@ -305,9 +374,9 @@ class _LoginPageState extends State<LoginPage> {
               hintText: "Enter password",
               hintStyle: TextStyle(color: Colors.grey[500]),
               border: InputBorder.none,
-              prefixIcon: Icon(
+              prefixIcon: const Icon(
                 Icons.lock_outline,
-                color: Colors.amber.withOpacity(0.7),
+                color: _amberIconColor,
               ),
               suffixIcon: IconButton(
                 icon: Icon(

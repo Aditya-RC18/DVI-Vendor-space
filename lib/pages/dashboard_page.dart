@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'uploads_page.dart';
+import 'report_issue_page.dart';
+import 'extras_page.dart';
 import '../services/auth_service.dart';
 import '../utils/constants.dart';
 
@@ -19,6 +21,7 @@ class _DashboardPageState extends State<DashboardPage> {
       child: Text("Welcome to Vendor Dashboard"),
     ), // Placeholder for Home
     const UploadsPage(),
+    const ExtrasPage(),
     const Center(child: Text("Settings")), // Placeholder
   ];
 
@@ -32,6 +35,19 @@ class _DashboardPageState extends State<DashboardPage> {
         ),
         backgroundColor: const Color(0xff0c1c2c),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.report_problem),
+            color: Colors.white,
+            tooltip: 'Report Issue',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const ReportIssuePage(),
+                ),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.logout),
             color: Colors.white,
@@ -52,6 +68,7 @@ class _DashboardPageState extends State<DashboardPage> {
         currentIndex: _currentIndex,
         selectedItemColor: const Color(0xff0c1c2c),
         unselectedItemColor: Colors.grey,
+        type: BottomNavigationBarType.fixed,
         onTap: (index) => setState(() => _currentIndex = index),
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Home'),
@@ -59,6 +76,7 @@ class _DashboardPageState extends State<DashboardPage> {
             icon: Icon(Icons.upload_file),
             label: 'Uploads',
           ),
+          BottomNavigationBarItem(icon: Icon(Icons.star), label: 'Extras'),
           BottomNavigationBarItem(
             icon: Icon(Icons.settings),
             label: 'Settings',

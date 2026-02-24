@@ -81,6 +81,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
     setState(() => _isLoading = true);
 
     if (user == null) {
+      debugPrint('🔒 No authenticated user - showing login');
       if (mounted) {
         setState(() {
           _currentWidget = const LoginPage();
@@ -90,27 +91,35 @@ class _AuthWrapperState extends State<AuthWrapper> {
       return;
     }
 
-    if (user.email == 'admin@test.com') {
-      if (mounted) {
-        setState(() {
-          _currentWidget = const AdminPage();
-          _isLoading = false;
-        });
-      }
-      return;
-    }
+    debugPrint('👤 Authenticated user: ${user.id}');
 
-    // Fetch Vendor Profile
+    // Fetch Vendor Profile to check role
     final profile = await _authService.getVendorProfile();
+
+    debugPrint('📋 Vendor profile: ${profile != null ? "Found" : "NOT Found"}');
+    if (profile != null) {
+      debugPrint('   ↳ Name: ${profile.fullName}');
+      debugPrint('   ↳ Role: ${profile.role}');
+      debugPrint('   ↳ Status: ${profile.verificationStatus}');
+    }
 
     if (mounted) {
       setState(() {
         if (profile == null) {
           // Authenticated but no vendor profile -> Go to Complete Setup
+          debugPrint('➡️  Redirecting to: Complete Profile Page');
           _currentWidget = const CompleteVendorProfilePage();
+        } else if (profile.isAdmin) {
+          // Admin user -> Admin Page
+          debugPrint('➡️  Redirecting to: Admin Page');
+          _currentWidget = const AdminPage();
         } else if (profile.verificationStatus == 'verified') {
+          // Verified vendor -> Dashboard
+          debugPrint('➡️  Redirecting to: Dashboard');
           _currentWidget = const DashboardPage();
         } else {
+          // Pending/rejected vendor -> Verification Status Page
+          debugPrint('➡️  Redirecting to: Verification Status Page');
           _currentWidget = VerificationStatusPage(profile: profile);
         }
         _isLoading = false;
