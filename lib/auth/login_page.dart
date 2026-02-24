@@ -168,6 +168,7 @@ class _LoginPageState extends State<LoginPage> {
                         OAuthButton(
                           provider: 'google',
                           onPressed: () async {
+                            final messenger = ScaffoldMessenger.of(context);
                             try {
                               setState(() => _isLoading = true);
                               // Ensure the user comes back to the app after sign in
@@ -175,7 +176,7 @@ class _LoginPageState extends State<LoginPage> {
                               // Navigation is handled by AuthWrapper or stream listener
                             } catch (e) {
                               if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
+                                messenger.showSnackBar(
                                   SnackBar(
                                     content: Text("Google Sign-In failed: $e"),
                                     backgroundColor: Colors.red,
@@ -190,12 +191,13 @@ class _LoginPageState extends State<LoginPage> {
                         OAuthButton(
                           provider: 'facebook',
                           onPressed: () async {
+                            final messenger = ScaffoldMessenger.of(context);
                             try {
                               setState(() => _isLoading = true);
                               await _authService.signInWithFacebook();
                             } catch (e) {
                               if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
+                                messenger.showSnackBar(
                                   SnackBar(
                                     content: Text(
                                       "Facebook Sign-In failed: $e",

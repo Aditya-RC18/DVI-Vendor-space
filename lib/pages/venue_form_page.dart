@@ -61,7 +61,7 @@ class _VenueFormPageState extends State<VenueFormPage> {
   List<GalleryEntry> _galleryImages = [];
 
   // State
-  bool _isLoading = false;
+  final bool _isLoading = false;
   bool _isSaving = false;
 
   bool get isEditMode => widget.existingVenue != null;
@@ -502,7 +502,7 @@ class _VenueFormPageState extends State<VenueFormPage> {
       children: [
         _buildSectionTitle('Venue Category'),
         DropdownButtonFormField<String>(
-          value: _selectedCategory,
+          initialValue: _selectedCategory,
           decoration: const InputDecoration(
             labelText: 'Select Category *',
             border: OutlineInputBorder(),
