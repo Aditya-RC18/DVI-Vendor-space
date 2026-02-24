@@ -11,6 +11,8 @@ import 'pages/verification_status_page.dart';
 import 'pages/admin_page.dart';
 import 'services/auth_service.dart';
 import 'auth/complete_profile_page.dart';
+import 'auth/admin_setup_page.dart';
+import 'auth/business_details_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -106,20 +108,35 @@ class _AuthWrapperState extends State<AuthWrapper> {
     if (mounted) {
       setState(() {
         if (profile == null) {
-          // Authenticated but no vendor profile -> Go to Complete Setup
-          debugPrint('➡️  Redirecting to: Complete Profile Page');
-          _currentWidget = const CompleteVendorProfilePage();
+          // Authenticated but no vendor profile yet — check role from metadata
+          final metaRole = user.userMetadata?['role'] as String? ?? '';
+          if (metaRole == 'admin') {
+            debugPrint('➡️  Redirecting to: Admin Setup Page');
+            _currentWidget = const AdminSetupPage();
+          } else {
+            debugPrint('➡️  Redirecting to: Complete Profile Page');
+            _currentWidget = const CompleteVendorProfilePage();
+          }
         } else if (profile.isAdmin) {
           // Admin user -> Admin Page
           debugPrint('➡️  Redirecting to: Admin Page');
           _currentWidget = const AdminPage();
+        } else if (profile.verificationStatus == 'rejected') {
+          // Rejected vendors always go to status page (to see rejection reason
+          // and edit their application) — regardless of businessSubmitted flag.
+          debugPrint('➡️  Redirecting to: Verification Status Page (rejected)');
+          _currentWidget = VerificationStatusPage(profile: profile);
+        } else if (!profile.businessSubmitted) {
+          // Vendor row exists but page 3 not yet submitted
+          debugPrint('➡️  Redirecting to: Business Details Page');
+          _currentWidget = const BusinessDetailsPage();
         } else if (profile.verificationStatus == 'verified') {
           // Verified vendor -> Dashboard
           debugPrint('➡️  Redirecting to: Dashboard');
           _currentWidget = const DashboardPage();
         } else {
-          // Pending/rejected vendor -> Verification Status Page
-          debugPrint('➡️  Redirecting to: Verification Status Page');
+          // Pending vendor -> Verification Status Page
+          debugPrint('➡️  Redirecting to: Verification Status Page (pending)');
           _currentWidget = VerificationStatusPage(profile: profile);
         }
         _isLoading = false;

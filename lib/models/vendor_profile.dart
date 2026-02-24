@@ -10,8 +10,18 @@ class VendorProfile {
   final String? identificationUrl;
   final String verificationStatus;
   final String? rejectionReason;
-  final String
-  role; // admin, venue_distributor, vendor_distributor, venue_vendor_distributor
+  final bool businessSubmitted;
+  final String? businessName;
+  final String? dateOfBirth;
+  final List<String> businessContacts;
+  final String role;
+  // Banking / business details
+  final String? accountHolderName;
+  final String? accountNumber;
+  final String? ifscCode;
+  final String? idNumber;
+  final String? bankProofUrl;
+  final String? businessProofUrl;
 
   VendorProfile({
     required this.id,
@@ -25,7 +35,17 @@ class VendorProfile {
     this.identificationUrl,
     this.verificationStatus = 'pending',
     this.rejectionReason,
-    this.role = 'venue_distributor', // Default role
+    this.businessSubmitted = false,
+    this.businessName,
+    this.dateOfBirth,
+    this.businessContacts = const [],
+    this.role = 'venue_distributor',
+    this.accountHolderName,
+    this.accountNumber,
+    this.ifscCode,
+    this.idNumber,
+    this.bankProofUrl,
+    this.businessProofUrl,
   });
 
   factory VendorProfile.fromJson(Map<String, dynamic> json) {
@@ -41,7 +61,21 @@ class VendorProfile {
       identificationUrl: json['identification_url'],
       verificationStatus: json['verification_status'] ?? 'pending',
       rejectionReason: json['rejection_reason'],
+      businessSubmitted: json['business_submitted'] as bool? ?? false,
+      businessName: json['business_name'],
+      dateOfBirth: json['date_of_birth'],
+      businessContacts:
+          (json['business_contacts'] as List?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [],
       role: json['role'] ?? 'venue_distributor',
+      accountHolderName: json['account_holder_name'],
+      accountNumber: json['account_number'],
+      ifscCode: json['ifsc_code'],
+      idNumber: json['id_number'],
+      bankProofUrl: json['bank_proof_url'],
+      businessProofUrl: json['business_proof_url'],
     );
   }
 
@@ -58,7 +92,17 @@ class VendorProfile {
       'identification_url': identificationUrl,
       'verification_status': verificationStatus,
       'rejection_reason': rejectionReason,
+      'business_submitted': businessSubmitted,
+      'business_name': businessName,
+      'date_of_birth': dateOfBirth,
+      'business_contacts': businessContacts,
       'role': role,
+      'account_holder_name': accountHolderName,
+      'account_number': accountNumber,
+      'ifsc_code': ifscCode,
+      'id_number': idNumber,
+      'bank_proof_url': bankProofUrl,
+      'business_proof_url': businessProofUrl,
     };
   }
 
@@ -74,7 +118,17 @@ class VendorProfile {
     String? identificationUrl,
     String? verificationStatus,
     String? rejectionReason,
+    bool? businessSubmitted,
+    String? businessName,
+    String? dateOfBirth,
+    List<String>? businessContacts,
     String? role,
+    String? accountHolderName,
+    String? accountNumber,
+    String? ifscCode,
+    String? idNumber,
+    String? bankProofUrl,
+    String? businessProofUrl,
   }) {
     return VendorProfile(
       id: id ?? this.id,
@@ -88,7 +142,17 @@ class VendorProfile {
       identificationUrl: identificationUrl ?? this.identificationUrl,
       verificationStatus: verificationStatus ?? this.verificationStatus,
       rejectionReason: rejectionReason ?? this.rejectionReason,
+      businessSubmitted: businessSubmitted ?? this.businessSubmitted,
+      businessName: businessName ?? this.businessName,
+      dateOfBirth: dateOfBirth ?? this.dateOfBirth,
+      businessContacts: businessContacts ?? this.businessContacts,
       role: role ?? this.role,
+      accountHolderName: accountHolderName ?? this.accountHolderName,
+      accountNumber: accountNumber ?? this.accountNumber,
+      ifscCode: ifscCode ?? this.ifscCode,
+      idNumber: idNumber ?? this.idNumber,
+      bankProofUrl: bankProofUrl ?? this.bankProofUrl,
+      businessProofUrl: businessProofUrl ?? this.businessProofUrl,
     );
   }
 

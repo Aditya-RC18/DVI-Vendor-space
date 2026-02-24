@@ -83,46 +83,46 @@ class _ReportedIssuesListPageState extends State<ReportedIssuesListPage>
           children: [
             ListTile(
               title: const Text('Pending'),
-              leading: Radio<String>(
-                value: 'pending',
+              leading: RadioGroup<String>(
                 groupValue: issue.status,
                 onChanged: (v) {
                   Navigator.pop(context);
                   _updateStatus(issue.id!, 'pending');
                 },
+                child: Radio<String>(value: 'pending'),
               ),
             ),
             ListTile(
               title: const Text('In Progress'),
-              leading: Radio<String>(
-                value: 'in_progress',
+              leading: RadioGroup<String>(
                 groupValue: issue.status,
                 onChanged: (v) {
                   Navigator.pop(context);
                   _updateStatus(issue.id!, 'in_progress');
                 },
+                child: Radio<String>(value: 'in_progress'),
               ),
             ),
             ListTile(
               title: const Text('Resolved'),
-              leading: Radio<String>(
-                value: 'resolved',
+              leading: RadioGroup<String>(
                 groupValue: issue.status,
                 onChanged: (v) {
                   Navigator.pop(context);
                   _updateStatus(issue.id!, 'resolved');
                 },
+                child: Radio<String>(value: 'resolved'),
               ),
             ),
             ListTile(
               title: const Text('Rejected'),
-              leading: Radio<String>(
-                value: 'rejected',
+              leading: RadioGroup<String>(
                 groupValue: issue.status,
                 onChanged: (v) {
                   Navigator.pop(context);
                   _updateStatus(issue.id!, 'rejected');
                 },
+                child: Radio<String>(value: 'rejected'),
               ),
             ),
           ],
@@ -260,7 +260,7 @@ class _ReportedIssuesListPageState extends State<ReportedIssuesListPage>
                                       decoration: BoxDecoration(
                                         color: _getStatusColor(
                                           issue.status,
-                                        ).withOpacity(0.1),
+                                        ).withValues(alpha: 0.1),
                                         borderRadius: BorderRadius.circular(12),
                                         border: Border.all(
                                           color: _getStatusColor(issue.status),

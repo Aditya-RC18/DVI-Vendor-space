@@ -36,9 +36,9 @@ class _CategoryListWidgetState extends State<CategoryListWidget> {
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error loading vendor cards: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading vendor cards: $e')),
+        );
       }
     }
   }
@@ -142,14 +142,14 @@ class _CategoryListWidgetState extends State<CategoryListWidget> {
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : _vendorCards.isEmpty
-                    ? _buildEmptyState()
-                    : ListView.builder(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: _vendorCards.length,
-                        itemBuilder: (context, index) =>
-                            _buildVendorCardWidget(_vendorCards[index]),
-                      ),
+                ? _buildEmptyState()
+                : ListView.builder(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: _vendorCards.length,
+                    itemBuilder: (context, index) =>
+                        _buildVendorCardWidget(_vendorCards[index]),
+                  ),
           ),
         ],
       ),
@@ -263,7 +263,10 @@ class _CategoryListWidgetState extends State<CategoryListWidget> {
                             children: [
                               Icon(Icons.delete, size: 20, color: Colors.red),
                               SizedBox(width: 8),
-                              Text('Delete', style: TextStyle(color: Colors.red)),
+                              Text(
+                                'Delete',
+                                style: TextStyle(color: Colors.red),
+                              ),
                             ],
                           ),
                         ),
@@ -293,7 +296,11 @@ class _CategoryListWidgetState extends State<CategoryListWidget> {
                       ),
                     ),
                     const SizedBox(width: 12),
-                    Icon(Icons.location_city, size: 16, color: Colors.grey[600]),
+                    Icon(
+                      Icons.location_city,
+                      size: 16,
+                      color: Colors.grey[600],
+                    ),
                     const SizedBox(width: 4),
                     Text(
                       card.city,
@@ -328,7 +335,10 @@ class _CategoryListWidgetState extends State<CategoryListWidget> {
                     ),
                     const SizedBox(width: 8),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.red[50],
                         borderRadius: BorderRadius.circular(4),
@@ -353,9 +363,12 @@ class _CategoryListWidgetState extends State<CategoryListWidget> {
                   children: [
                     ...card.serviceTags.map(
                       (tag) => Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
-                          color: const Color(0xff0c1c2c).withOpacity(0.1),
+                          color: const Color(0xff0c1c2c).withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(
@@ -369,7 +382,10 @@ class _CategoryListWidgetState extends State<CategoryListWidget> {
                     ),
                     ...card.qualityTags.map(
                       (tag) => Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.amber[100],
                           borderRadius: BorderRadius.circular(12),

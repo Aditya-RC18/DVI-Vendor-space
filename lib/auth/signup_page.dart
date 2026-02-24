@@ -15,7 +15,6 @@ class SignupPage extends StatefulWidget {
 class _SignupPageState extends State<SignupPage> {
   final _formKey = GlobalKey<FormState>();
 
-  final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
@@ -24,22 +23,52 @@ class _SignupPageState extends State<SignupPage> {
   bool _isConfirmPasswordVisible = false;
   bool _isLoading = false;
 
+  // Account type — null means "none selected"
+  String? _selectedRole;
+
   // Real-time validation tracking
   String _currentPassword = '';
   String _currentConfirmPassword = '';
-  String _currentName = '';
   String _currentEmail = '';
 
-  // Pre-calculated colors to avoid rebuilding on every keystroke
-  static const _fieldBgColor = Color(0x0DFFFFFF); // white with 0.05 opacity
-  static const _fieldBorderColor = Color(0x1AFFFFFF); // white with 0.1 opacity
+  // Pre-calculated colors
+  static const _fieldBgColor = Color(0x0DFFFFFF);
+  static const _fieldBorderColor = Color(0x1AFFFFFF);
   static const _amberColor = Color(0xFFFFC107);
-  static const _amberIconColor = Color(0xB3FFC107); // amber with 0.7 opacity
-  static const _amberGlowColor = Color(0x26FFC107); // amber with 0.15 opacity
+  static const _amberIconColor = Color(0xB3FFC107);
+  static const _amberGlowColor = Color(0x26FFC107);
+
+  // Role options
+  static const _roleOptions = [
+    _RoleOption(
+      value: 'venue_distributor',
+      label: 'Venue Distributor',
+      subtitle: 'Manage wedding venues',
+      icon: Icons.business,
+    ),
+    _RoleOption(
+      value: 'vendor_distributor',
+      label: 'Vendor Services',
+      subtitle: 'Catering, photography, etc.',
+      icon: Icons.store,
+    ),
+    _RoleOption(
+      value: 'venue_vendor_distributor',
+      label: 'Both (Venue & Services)',
+      subtitle: 'Combined access',
+      icon: Icons.business_center,
+    ),
+    _RoleOption(
+      value: 'admin',
+      label: 'Admin Account',
+      subtitle: 'Requires approval',
+      icon: Icons.admin_panel_settings,
+      isSpecial: true,
+    ),
+  ];
 
   @override
   void dispose() {
-    _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
@@ -59,22 +88,33 @@ class _SignupPageState extends State<SignupPage> {
         _currentPassword == _currentConfirmPassword;
   }
 
-  bool get _isNameValid {
-    return Validators.validateFullName(_currentName) == null;
-  }
-
   bool get _isEmailValid {
     return Validators.validateEmail(_currentEmail) == null;
   }
 
+  bool get _isRoleSelected => _selectedRole != null;
+
   bool get _canSubmit {
-    return _isNameValid &&
+    return _isRoleSelected &&
         _isEmailValid &&
         _isPasswordStrong &&
         _passwordsMatch;
   }
 
+  void _showRoleRequiredSnackBar() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Please select an account type first'),
+        backgroundColor: Colors.orange,
+      ),
+    );
+  }
+
   Future<void> _submit() async {
+    if (!_isRoleSelected) {
+      _showRoleRequiredSnackBar();
+      return;
+    }
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
@@ -83,26 +123,74 @@ class _SignupPageState extends State<SignupPage> {
       final response = await Supabase.instance.client.auth.signUp(
         email: _emailController.text.trim(),
         password: _passwordController.text,
-        data: {'full_name': _nameController.text.trim()},
+        data: {'role': _selectedRole},
       );
 
-      if (response.user == null) throw "Signup failed";
+      if (response.user == null) throw 'Signup failed';
 
-      // Auto-login after signup
+      // Main wrapper will route to CompleteProfilePage or AdminSetupPage
       if (mounted) {
-        Navigator.pushReplacementNamed(
-          context,
-          '/',
-        ); // Main wrapper will route to CompleteProfilePage
+        Navigator.pushReplacementNamed(context, '/');
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red),
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
         );
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _handleGoogleSignIn() async {
+    if (!_isRoleSelected) {
+      _showRoleRequiredSnackBar();
+      return;
+    }
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      setState(() => _isLoading = true);
+      await AuthService().signInWithGoogle();
+      // After OAuth, stamp the role onto user metadata
+      await Supabase.instance.client.auth.updateUser(
+        UserAttributes(data: {'role': _selectedRole}),
+      );
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('Google Sign-In failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _handleFacebookSignIn() async {
+    if (!_isRoleSelected) {
+      _showRoleRequiredSnackBar();
+      return;
+    }
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      setState(() => _isLoading = true);
+      await AuthService().signInWithFacebook();
+      await Supabase.instance.client.auth.updateUser(
+        UserAttributes(data: {'role': _selectedRole}),
+      );
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('Facebook Sign-In failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -125,7 +213,7 @@ class _SignupPageState extends State<SignupPage> {
             ),
             child: Stack(
               children: [
-                // Background Elements - const to avoid rebuilding
+                // Ambient glow
                 Positioned(
                   top: -size.height * 0.15,
                   right: -size.width * 0.2,
@@ -150,8 +238,9 @@ class _SignupPageState extends State<SignupPage> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
+                            // Header
                             const Text(
-                              "Create Account",
+                              'Create Account',
                               style: TextStyle(
                                 fontSize: 32,
                                 fontWeight: FontWeight.w800,
@@ -161,7 +250,7 @@ class _SignupPageState extends State<SignupPage> {
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              "Join DreamVentz as a Vendor",
+                              'Join DreamVentz as a Vendor',
                               style: TextStyle(
                                 color: Colors.grey[400],
                                 fontSize: 16,
@@ -170,53 +259,114 @@ class _SignupPageState extends State<SignupPage> {
                             ),
                             const SizedBox(height: 32),
 
-                            // OAuth Buttons
-                            OAuthButton(
-                              provider: 'google',
-                              onPressed: () async {
-                                try {
-                                  setState(() => _isLoading = true);
-                                  await AuthService().signInWithGoogle();
-                                } catch (e) {
-                                  if (mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          "Google Sign-In failed: $e",
-                                        ),
-                                        backgroundColor: Colors.red,
-                                      ),
-                                    );
-                                    setState(() => _isLoading = false);
-                                  }
-                                }
-                              },
-                            ),
+                            // ── Account Type ──────────────────────────────
+                            _buildSectionLabel('Account Type'),
                             const SizedBox(height: 12),
-                            OAuthButton(
-                              provider: 'facebook',
-                              onPressed: () async {
-                                try {
-                                  setState(() => _isLoading = true);
-                                  await AuthService().signInWithFacebook();
-                                } catch (e) {
-                                  if (mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          "Facebook Sign-In failed: $e",
-                                        ),
-                                        backgroundColor: Colors.red,
-                                      ),
-                                    );
-                                    setState(() => _isLoading = false);
-                                  }
-                                }
-                              },
-                            ),
+                            _buildRoleSelector(),
                             const SizedBox(height: 24),
 
-                            // Divider
+                            // ── Email ─────────────────────────────────────
+                            _buildTextField(
+                              label: 'Email Address',
+                              hint: 'vendor@example.com',
+                              prefixIcon: Icons.email_outlined,
+                              controller: _emailController,
+                              validator: Validators.validateEmail,
+                              keyboardType: TextInputType.emailAddress,
+                              onChanged: (v) =>
+                                  setState(() => _currentEmail = v),
+                            ),
+                            if (_currentEmail.isNotEmpty)
+                              _buildInlineIndicator(
+                                valid: _isEmailValid,
+                                validText: 'Valid email',
+                                invalidText: 'Please enter a valid email',
+                              ),
+                            const SizedBox(height: 16),
+
+                            // ── Password ──────────────────────────────────
+                            _buildPasswordField(
+                              controller: _passwordController,
+                              label: 'Password',
+                              isVisible: _isPasswordVisible,
+                              onVisibilityChanged: () => setState(
+                                () => _isPasswordVisible = !_isPasswordVisible,
+                              ),
+                              validator: Validators.validatePassword,
+                              onChanged: (v) =>
+                                  setState(() => _currentPassword = v),
+                            ),
+                            PasswordStrengthIndicator(
+                              password: _currentPassword,
+                            ),
+                            const SizedBox(height: 16),
+
+                            // ── Confirm Password ──────────────────────────
+                            _buildPasswordField(
+                              controller: _confirmPasswordController,
+                              label: 'Confirm Password',
+                              isVisible: _isConfirmPasswordVisible,
+                              onVisibilityChanged: () => setState(
+                                () => _isConfirmPasswordVisible =
+                                    !_isConfirmPasswordVisible,
+                              ),
+                              validator: (val) =>
+                                  val != _passwordController.text
+                                  ? 'Passwords do not match'
+                                  : null,
+                              onChanged: (v) =>
+                                  setState(() => _currentConfirmPassword = v),
+                            ),
+                            if (_currentConfirmPassword.isNotEmpty)
+                              _buildInlineIndicator(
+                                valid: _passwordsMatch,
+                                validText: 'Passwords match',
+                                invalidText: 'Passwords do not match',
+                                invalidColor: Colors.red,
+                                invalidIcon: Icons.cancel,
+                              ),
+
+                            const SizedBox(height: 32),
+
+                            // ── Submit ────────────────────────────────────
+                            ElevatedButton(
+                              onPressed: (_isLoading || !_canSubmit)
+                                  ? null
+                                  : _submit,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: _amberColor,
+                                foregroundColor: Colors.black,
+                                disabledBackgroundColor: _amberColor.withValues(
+                                  alpha: 0.4,
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 16,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: _isLoading
+                                  ? const SizedBox(
+                                      height: 22,
+                                      width: 22,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.black,
+                                      ),
+                                    )
+                                  : const Text(
+                                      'Continue',
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                            ),
+
+                            const SizedBox(height: 24),
+
+                            // ── OR Divider ────────────────────────────────
                             Row(
                               children: [
                                 Expanded(
@@ -239,183 +389,27 @@ class _SignupPageState extends State<SignupPage> {
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 24),
 
-                            _buildTextField(
-                              label: "Full Name",
-                              hint: "John Doe",
-                              prefixIcon: Icons.person_outline,
-                              controller: _nameController,
-                              validator: Validators.validateFullName,
-                              onChanged: (value) {
-                                setState(() => _currentName = value);
-                              },
-                            ),
-                            if (_currentName.isNotEmpty)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 8, left: 4),
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      _isNameValid
-                                          ? Icons.check_circle
-                                          : Icons.info_outline,
-                                      color: _isNameValid
-                                          ? Colors.green
-                                          : Colors.orange,
-                                      size: 16,
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      _isNameValid
-                                          ? 'Valid name'
-                                          : 'Please enter your full name',
-                                      style: TextStyle(
-                                        color: _isNameValid
-                                            ? Colors.green
-                                            : Colors.orange,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
                             const SizedBox(height: 16),
-                            _buildTextField(
-                              label: "Email Address",
-                              hint: "vendor@example.com",
-                              prefixIcon: Icons.email_outlined,
-                              controller: _emailController,
-                              validator: Validators.validateEmail,
-                              keyboardType: TextInputType.emailAddress,
-                              onChanged: (value) {
-                                setState(() => _currentEmail = value);
-                              },
-                            ),
-                            if (_currentEmail.isNotEmpty)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 8, left: 4),
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      _isEmailValid
-                                          ? Icons.check_circle
-                                          : Icons.info_outline,
-                                      color: _isEmailValid
-                                          ? Colors.green
-                                          : Colors.orange,
-                                      size: 16,
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      _isEmailValid
-                                          ? 'Valid email'
-                                          : 'Please enter a valid email',
-                                      style: TextStyle(
-                                        color: _isEmailValid
-                                            ? Colors.green
-                                            : Colors.orange,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            const SizedBox(height: 16),
-                            _buildPasswordField(
-                              controller: _passwordController,
-                              label: "Password",
-                              isVisible: _isPasswordVisible,
-                              onVisibilityChanged: () => setState(
-                                () => _isPasswordVisible = !_isPasswordVisible,
-                              ),
-                              validator: Validators.validatePassword,
-                              onChanged: (value) {
-                                setState(() => _currentPassword = value);
-                              },
-                            ),
-                            // Password strength indicator
-                            PasswordStrengthIndicator(
-                              password: _currentPassword,
-                            ),
-                            const SizedBox(height: 16),
-                            _buildPasswordField(
-                              controller: _confirmPasswordController,
-                              label: "Confirm Password",
-                              isVisible: _isConfirmPasswordVisible,
-                              onVisibilityChanged: () => setState(
-                                () => _isConfirmPasswordVisible =
-                                    !_isConfirmPasswordVisible,
-                              ),
-                              validator: (val) =>
-                                  val != _passwordController.text
-                                  ? "Passwords do not match"
-                                  : null,
-                              onChanged: (value) {
-                                setState(() => _currentConfirmPassword = value);
-                              },
-                            ),
-                            // Password match indicator
-                            if (_currentConfirmPassword.isNotEmpty)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 8, left: 4),
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      _passwordsMatch
-                                          ? Icons.check_circle
-                                          : Icons.cancel,
-                                      color: _passwordsMatch
-                                          ? Colors.green
-                                          : Colors.red,
-                                      size: 16,
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      _passwordsMatch
-                                          ? 'Passwords match'
-                                          : 'Passwords do not match',
-                                      style: TextStyle(
-                                        color: _passwordsMatch
-                                            ? Colors.green
-                                            : Colors.red,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
 
-                            const SizedBox(height: 32),
-                            ElevatedButton(
-                              onPressed: (_isLoading || !_canSubmit)
-                                  ? null
-                                  : _submit,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: _amberColor,
-                                foregroundColor: Colors.black,
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 16,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                              child: _isLoading
-                                  ? const CircularProgressIndicator()
-                                  : const Text(
-                                      "Continue",
-                                      style: TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
+                            // ── OAuth Buttons (bottom) ─────────────────────
+                            OAuthButton(
+                              provider: 'google',
+                              isLoading: _isLoading,
+                              onPressed: _handleGoogleSignIn,
                             ),
+                            const SizedBox(height: 12),
+                            OAuthButton(
+                              provider: 'facebook',
+                              isLoading: _isLoading,
+                              onPressed: _handleFacebookSignIn,
+                            ),
+
                             const SizedBox(height: 24),
                             TextButton(
                               onPressed: () => Navigator.pop(context),
                               child: const Text(
-                                "Already have an account? Login",
+                                'Already have an account? Login',
                                 style: TextStyle(color: _amberColor),
                               ),
                             ),
@@ -429,6 +423,154 @@ class _SignupPageState extends State<SignupPage> {
             ),
           );
         },
+      ),
+    );
+  }
+
+  // ── Role Selector ──────────────────────────────────────────────────────────
+
+  Widget _buildSectionLabel(String text) {
+    return Text(
+      text,
+      style: TextStyle(
+        color: Colors.grey[300],
+        fontWeight: FontWeight.w600,
+        fontSize: 14,
+      ),
+    );
+  }
+
+  Widget _buildRoleSelector() {
+    return Container(
+      decoration: BoxDecoration(
+        color: _fieldBgColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: _isRoleSelected ? _amberColor : _fieldBorderColor,
+          width: _isRoleSelected ? 1.5 : 1,
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: _selectedRole,
+          dropdownColor: const Color(0xFF1A1A1A),
+          isExpanded: true,
+          icon: const Icon(Icons.arrow_drop_down, color: _amberColor),
+          hint: Row(
+            children: [
+              const Icon(Icons.badge_outlined, color: Colors.grey, size: 20),
+              const SizedBox(width: 12),
+              Text(
+                'Select account type',
+                style: TextStyle(color: Colors.grey[500], fontSize: 15),
+              ),
+            ],
+          ),
+          style: const TextStyle(color: Colors.white, fontSize: 15),
+          items: _roleOptions
+              .map(
+                (opt) => DropdownMenuItem<String>(
+                  value: opt.value,
+                  child: _buildRoleItem(opt),
+                ),
+              )
+              .toList(),
+          onChanged: (v) => setState(() => _selectedRole = v),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRoleItem(_RoleOption opt) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(opt.icon, color: _amberColor, size: 20),
+        const SizedBox(width: 10),
+        Flexible(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(
+                      opt.label,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (opt.isSpecial) ...[
+                    const SizedBox(width: 4),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 3,
+                        vertical: 1,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                      child: const Text(
+                        'APPROVAL',
+                        style: TextStyle(
+                          color: Colors.orange,
+                          fontSize: 7,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              Text(
+                opt.subtitle,
+                style: TextStyle(color: Colors.grey[500], fontSize: 10),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+
+  Widget _buildInlineIndicator({
+    required bool valid,
+    required String validText,
+    required String invalidText,
+    Color invalidColor = Colors.orange,
+    IconData invalidIcon = Icons.info_outline,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8, left: 4),
+      child: Row(
+        children: [
+          Icon(
+            valid ? Icons.check_circle : invalidIcon,
+            color: valid ? Colors.green : invalidColor,
+            size: 16,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            valid ? validText : invalidText,
+            style: TextStyle(
+              color: valid ? Colors.green : invalidColor,
+              fontSize: 12,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -513,7 +655,7 @@ class _SignupPageState extends State<SignupPage> {
             onChanged: onChanged,
             style: const TextStyle(color: Colors.white),
             decoration: InputDecoration(
-              hintText: "••••••••",
+              hintText: '••••••••',
               hintStyle: TextStyle(color: Colors.grey[500]),
               border: InputBorder.none,
               prefixIcon: const Icon(
@@ -537,4 +679,22 @@ class _SignupPageState extends State<SignupPage> {
       ],
     );
   }
+}
+
+// ── Data class ──────────────────────────────────────────────────────────────
+
+class _RoleOption {
+  final String value;
+  final String label;
+  final String subtitle;
+  final IconData icon;
+  final bool isSpecial;
+
+  const _RoleOption({
+    required this.value,
+    required this.label,
+    required this.subtitle,
+    required this.icon,
+    this.isSpecial = false,
+  });
 }

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/vendor_card.dart';
 
@@ -26,9 +27,7 @@ class VendorCardService {
         .eq('vendor_id', vendorId)
         .order('created_at', ascending: false);
 
-    return (response as List)
-        .map((json) => VendorCard.fromJson(json))
-        .toList();
+    return (response as List).map((json) => VendorCard.fromJson(json)).toList();
   }
 
   /// Get vendor cards by category
@@ -45,14 +44,16 @@ class VendorCardService {
         .eq('category_id', categoryId)
         .order('created_at', ascending: false);
 
-    return (response as List)
-        .map((json) => VendorCard.fromJson(json))
-        .toList();
+    return (response as List).map((json) => VendorCard.fromJson(json)).toList();
   }
 
   /// Upload image to Supabase storage
   /// Returns the image path in format: "foldername/filename.jpg"
-  Future<String> uploadImage(File imageFile, int categoryId, String studioName) async {
+  Future<String> uploadImage(
+    File imageFile,
+    int categoryId,
+    String studioName,
+  ) async {
     final vendorId = currentVendorId;
     if (vendorId == null) {
       throw Exception('User not authenticated');
@@ -60,7 +61,7 @@ class VendorCardService {
 
     // Get folder name based on category
     final folderName = VendorCard.getFolderName(categoryId);
-    
+
     // Generate unique filename
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final sanitizedStudioName = studioName
@@ -68,18 +69,16 @@ class VendorCardService {
         .replaceAll(RegExp(r'[^a-z0-9]'), '_')
         .replaceAll(RegExp(r'_+'), '_');
     final fileName = '${sanitizedStudioName}_$timestamp.jpg';
-    
+
     // Full path in storage
     final storagePath = '$folderName/$fileName';
-    
+
     // Read file as bytes
     final bytes = await imageFile.readAsBytes();
-    
+
     // Upload to Supabase storage
-    await _supabase.storage
-        .from(_bucketName)
-        .uploadBinary(storagePath, bytes);
-    
+    await _supabase.storage.from(_bucketName).uploadBinary(storagePath, bytes);
+
     // Return the path (not full URL, just path)
     return storagePath;
   }
@@ -98,7 +97,7 @@ class VendorCardService {
 
     // Ensure vendor_id matches current user
     final cardData = card.copyWith(vendorId: vendorId).toJson();
-    
+
     final response = await _supabase
         .from(_tableName)
         .insert(cardData)
@@ -119,17 +118,13 @@ class VendorCardService {
       throw Exception('User not authenticated');
     }
 
-    // Ensure vendor owns this card
-    final existingCard = await _supabase
+    // Ensure vendor owns this card (will throw if not found)
+    await _supabase
         .from(_tableName)
         .select()
         .eq('id', card.id!)
         .eq('vendor_id', vendorId)
         .single();
-
-    if (existingCard == null) {
-      throw Exception('Card not found or access denied');
-    }
 
     final response = await _supabase
         .from(_tableName)
@@ -168,17 +163,15 @@ class VendorCardService {
 
       // Try to delete image from storage (non-blocking)
       try {
-        await _supabase.storage
-            .from(_bucketName)
-            .remove([card.imagePath]);
+        await _supabase.storage.from(_bucketName).remove([card.imagePath]);
       } catch (e) {
         // Image deletion failed, but card is already deleted from DB
-        print('Warning: Could not delete image: $e');
+        debugPrint('Warning: Could not delete image: $e');
       }
 
       return true;
     } catch (e) {
-      print('Error deleting vendor card: $e');
+      debugPrint('Error deleting vendor card: $e');
       return false;
     }
   }
@@ -188,7 +181,7 @@ class VendorCardService {
     try {
       await _supabase.storage.from(_bucketName).remove([imagePath]);
     } catch (e) {
-      print('Warning: Could not delete old image: $e');
+      debugPrint('Warning: Could not delete old image: $e');
     }
   }
 

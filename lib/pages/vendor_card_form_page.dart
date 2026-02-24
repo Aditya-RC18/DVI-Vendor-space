@@ -56,7 +56,9 @@ class _VendorCardFormPageState extends State<VendorCardFormPage> {
     _selectedQualityTags.addAll(card.qualityTags);
     _originalPriceController.text = card.originalPrice.toStringAsFixed(0);
     _discountedPriceController.text = card.discountedPrice.toStringAsFixed(0);
-    _availableServiceTags = VendorCardTags.getServiceTagsForCategory(card.categoryId);
+    _availableServiceTags = VendorCardTags.getServiceTagsForCategory(
+      card.categoryId,
+    );
   }
 
   @override
@@ -118,8 +120,9 @@ class _VendorCardFormPageState extends State<VendorCardFormPage> {
     setState(() {
       _selectedCategoryId = categoryId;
       _selectedServiceTags.clear();
-      _availableServiceTags =
-          categoryId != null ? VendorCardTags.getServiceTagsForCategory(categoryId) : [];
+      _availableServiceTags = categoryId != null
+          ? VendorCardTags.getServiceTagsForCategory(categoryId)
+          : [];
     });
   }
 
@@ -157,7 +160,8 @@ class _VendorCardFormPageState extends State<VendorCardFormPage> {
     }
 
     final originalPrice = double.tryParse(_originalPriceController.text) ?? 0;
-    final discountedPrice = double.tryParse(_discountedPriceController.text) ?? 0;
+    final discountedPrice =
+        double.tryParse(_discountedPriceController.text) ?? 0;
 
     if (discountedPrice >= originalPrice) {
       _showError('Discounted price must be less than original price');
@@ -264,7 +268,7 @@ class _VendorCardFormPageState extends State<VendorCardFormPage> {
             // Category Dropdown
             _buildSectionTitle('Category *'),
             DropdownButtonFormField<int>(
-              value: _selectedCategoryId,
+              initialValue: _selectedCategoryId,
               decoration: _inputDecoration('Select category'),
               items: VendorCategory.all.map((cat) {
                 return DropdownMenuItem(
@@ -272,8 +276,11 @@ class _VendorCardFormPageState extends State<VendorCardFormPage> {
                   child: Text(cat.name, style: GoogleFonts.urbanist()),
                 );
               }).toList(),
-              onChanged: widget.existingCard == null ? _onCategoryChanged : null,
-              validator: (value) => value == null ? 'Please select a category' : null,
+              onChanged: widget.existingCard == null
+                  ? _onCategoryChanged
+                  : null,
+              validator: (value) =>
+                  value == null ? 'Please select a category' : null,
             ),
             const SizedBox(height: 20),
 
@@ -283,15 +290,16 @@ class _VendorCardFormPageState extends State<VendorCardFormPage> {
               controller: _studioNameController,
               decoration: _inputDecoration('Enter studio name'),
               style: GoogleFonts.urbanist(),
-              validator: (value) =>
-                  value?.trim().isEmpty ?? true ? 'Studio name is required' : null,
+              validator: (value) => value?.trim().isEmpty ?? true
+                  ? 'Studio name is required'
+                  : null,
             ),
             const SizedBox(height: 20),
 
             // City Dropdown
             _buildSectionTitle('City *'),
             DropdownButtonFormField<String>(
-              value: _selectedCity,
+              initialValue: _selectedCity,
               decoration: _inputDecoration('Select city'),
               isExpanded: true,
               items: IndianCities.cities.map((city) {
@@ -301,7 +309,8 @@ class _VendorCardFormPageState extends State<VendorCardFormPage> {
                 );
               }).toList(),
               onChanged: (value) => setState(() => _selectedCity = value),
-              validator: (value) => value == null ? 'Please select a city' : null,
+              validator: (value) =>
+                  value == null ? 'Please select a city' : null,
             ),
             const SizedBox(height: 20),
 
@@ -330,7 +339,11 @@ class _VendorCardFormPageState extends State<VendorCardFormPage> {
 
             // Quality Tags
             _buildSectionTitle('Quality Tags * (Select up to 2)'),
-            _buildTagSection(VendorCardTags.qualityTags, _selectedQualityTags, 2),
+            _buildTagSection(
+              VendorCardTags.qualityTags,
+              _selectedQualityTags,
+              2,
+            ),
             const SizedBox(height: 20),
 
             // Prices
@@ -342,7 +355,9 @@ class _VendorCardFormPageState extends State<VendorCardFormPage> {
               keyboardType: TextInputType.number,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               validator: (value) {
-                if (value?.trim().isEmpty ?? true) return 'Original price is required';
+                if (value?.trim().isEmpty ?? true) {
+                  return 'Original price is required';
+                }
                 final price = double.tryParse(value!);
                 if (price == null || price <= 0) return 'Enter a valid price';
                 return null;
@@ -358,7 +373,9 @@ class _VendorCardFormPageState extends State<VendorCardFormPage> {
               keyboardType: TextInputType.number,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               validator: (value) {
-                if (value?.trim().isEmpty ?? true) return 'Discounted price is required';
+                if (value?.trim().isEmpty ?? true) {
+                  return 'Discounted price is required';
+                }
                 final price = double.tryParse(value!);
                 if (price == null || price <= 0) return 'Enter a valid price';
                 return null;
@@ -387,7 +404,9 @@ class _VendorCardFormPageState extends State<VendorCardFormPage> {
                       ),
                     )
                   : Text(
-                      widget.existingCard == null ? 'Create Card' : 'Update Card',
+                      widget.existingCard == null
+                          ? 'Create Card'
+                          : 'Update Card',
                       style: GoogleFonts.urbanist(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -511,7 +530,11 @@ class _VendorCardFormPageState extends State<VendorCardFormPage> {
     );
   }
 
-  Widget _buildTagSection(List<String> availableTags, Set<String> selectedTags, int maxSelection) {
+  Widget _buildTagSection(
+    List<String> availableTags,
+    Set<String> selectedTags,
+    int maxSelection,
+  ) {
     return Wrap(
       spacing: 8,
       runSpacing: 8,
@@ -546,7 +569,9 @@ class _VendorCardFormPageState extends State<VendorCardFormPage> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
             side: BorderSide(
-              color: isSelected ? const Color(0xff0c1c2c) : Colors.grey.shade300,
+              color: isSelected
+                  ? const Color(0xff0c1c2c)
+                  : Colors.grey.shade300,
             ),
           ),
         );

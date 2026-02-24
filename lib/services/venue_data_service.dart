@@ -254,7 +254,7 @@ class VenueDataService {
       final bytes = await imageFile.readAsBytes();
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final extension = imageFile.path.split('.').last;
-      final filename = '${venueId}_${timestamp}.$extension';
+      final filename = '${venueId}_$timestamp.$extension';
 
       // Upload to storage
       await _supabase.storage

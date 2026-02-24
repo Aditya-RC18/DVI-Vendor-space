@@ -62,6 +62,7 @@ dependencies:
   # Permission handler for image access
   permission_handler: ^11.3.1
   country_picker: ^2.0.27
+  flutter_image_compress: ^2.3.0
   
   # HTTP for geocoding API calls (lightweight location search)
   http: ^1.2.2

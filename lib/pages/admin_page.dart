@@ -198,10 +198,11 @@ class _AdminPageState extends State<AdminPage>
         );
       }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text("Error: $e")));
+      }
     }
   }
 
@@ -545,7 +546,7 @@ class _AdminPageState extends State<AdminPage>
 
     return Container(
       decoration: BoxDecoration(
-        color: (config['color'] as Color).withOpacity(0.1),
+        color: (config['color'] as Color).withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(6),
         border: Border.all(color: config['color'] as Color, width: 1),
       ),
@@ -572,7 +573,7 @@ class _AdminPageState extends State<AdminPage>
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
               decoration: BoxDecoration(
-                color: Colors.orange.withOpacity(0.2),
+                color: Colors.orange.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(3),
               ),
               child: const Text(
@@ -685,7 +686,7 @@ class _AdminPageState extends State<AdminPage>
                               decoration: BoxDecoration(
                                 color: _getVerificationColor(
                                   vendor.verificationStatus,
-                                ).withOpacity(0.1),
+                                ).withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(8),
                                 border: Border.all(
                                   color: _getVerificationColor(
@@ -820,12 +821,14 @@ class _AdminPageState extends State<AdminPage>
     String groupValue,
     ValueChanged<String?> onChanged,
   ) {
-    return RadioListTile<String>(
-      title: Text(title),
-      value: value,
+    return RadioGroup<String>(
       groupValue: groupValue,
       onChanged: onChanged,
-      activeColor: const Color(0xff0c1c2c),
+      child: RadioListTile<String>(
+        title: Text(title),
+        value: value,
+        activeColor: const Color(0xff0c1c2c),
+      ),
     );
   }
 

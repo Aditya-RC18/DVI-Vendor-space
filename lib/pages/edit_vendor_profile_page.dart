@@ -1,11 +1,15 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:country_picker/country_picker.dart';
 import '../models/vendor_profile.dart';
 import '../utils/validators.dart';
+import 'edit_business_details_page.dart';
 
+/// Edit Application page — lets the vendor update their application details.
+/// Locked fields (read-only): email, personal phone, date of birth, account type.
+/// Editable fields: full name, business name, address, city, state, pincode,
+///                  business contacts.
 class EditVendorProfilePage extends StatefulWidget {
   final VendorProfile profile;
   const EditVendorProfilePage({super.key, required this.profile});
@@ -18,506 +22,672 @@ class _EditVendorProfilePageState extends State<EditVendorProfilePage> {
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
 
+  // ── Editable ─────────────────────────────────────────────────────────────
   late TextEditingController _nameController;
-  late TextEditingController _phoneController;
+  late TextEditingController _businessNameController;
   late TextEditingController _addressController;
   late TextEditingController _cityController;
   late TextEditingController _stateController;
   late TextEditingController _pincodeController;
+  final List<_EditContact> _businessContacts = [];
 
-  String _selectedCountryCode = '91';
-  File? _idDocument;
-  late String _selectedRole;
+  // ── Style constants ───────────────────────────────────────────────────────
+  static const _bg = Color(0xFF0E0E0E);
+  static const _fieldBg = Color(0x0DFFFFFF);
+  static const _fieldBorder = Color(0x1AFFFFFF);
+  static const _amber = Color(0xFFFFC107);
+  static const _amberIcon = Color(0xB3FFC107);
 
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController(text: widget.profile.fullName);
-    _selectedRole = widget.profile.role; // Initialize with current role
+    final p = widget.profile;
+    _nameController = TextEditingController(text: p.fullName);
+    _businessNameController = TextEditingController(text: p.businessName ?? '');
+    _addressController = TextEditingController(text: p.address);
+    _cityController = TextEditingController(text: p.city);
+    _stateController = TextEditingController(text: p.state);
+    _pincodeController = TextEditingController(text: p.pincode);
 
-    // Parse phone number to extract country code if possible
-    String rawPhone = widget.profile.phone;
-    if (rawPhone.startsWith('+')) {
-      // Simple heuristic: assume country code is first 2-3 digits after +
-      // Better to store country code separately, but for now we try to parse or default
-      if (rawPhone.length > 10) {
-        // e.g. +91 9876543210 or +919876543210
-        // Let's just strip non-digits and take last 10 as phone, rest as code
-        String digits = rawPhone.replaceAll(RegExp(r'\D'), '');
-        if (digits.length > 10) {
-          _phoneController = TextEditingController(
-            text: digits.substring(digits.length - 10),
-          );
-          _selectedCountryCode = digits.substring(0, digits.length - 10);
+    // Restore saved business contacts
+    for (final raw in p.businessContacts) {
+      final ec = _EditContact();
+      if (raw.startsWith('+')) {
+        final spaceIdx = raw.indexOf(' ');
+        if (spaceIdx != -1) {
+          ec.countryCode = raw.substring(1, spaceIdx);
+          ec.controller.text = raw.substring(spaceIdx + 1);
         } else {
-          _phoneController = TextEditingController(text: digits);
+          ec.controller.text = raw;
         }
       } else {
-        _phoneController = TextEditingController(text: rawPhone);
+        ec.controller.text = raw;
       }
-    } else {
-      _phoneController = TextEditingController(text: rawPhone);
+      ec.isMobile = !ec.controller.text.contains('-');
+      _businessContacts.add(ec);
     }
-
-    _addressController = TextEditingController(text: widget.profile.address);
-    _cityController = TextEditingController(text: widget.profile.city);
-    _stateController = TextEditingController(text: widget.profile.state);
-    _pincodeController = TextEditingController(text: widget.profile.pincode);
   }
 
   @override
   void dispose() {
     _nameController.dispose();
-    _phoneController.dispose();
+    _businessNameController.dispose();
     _addressController.dispose();
     _cityController.dispose();
     _stateController.dispose();
     _pincodeController.dispose();
+    for (final c in _businessContacts) {
+      c.controller.dispose();
+    }
     super.dispose();
   }
 
-  void _showCustomToast(String message, {bool isError = true}) {
-    OverlayEntry overlayEntry = OverlayEntry(
-      builder: (context) => Positioned(
-        top: 50.0,
-        left: 20.0,
-        right: 20.0,
-        child: Material(
-          color: Colors.transparent,
-          child: Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 24.0,
-              vertical: 12.0,
-            ),
-            decoration: BoxDecoration(
-              color: isError ? Colors.redAccent : Colors.green,
-              borderRadius: BorderRadius.circular(8.0),
-              boxShadow: const [
-                BoxShadow(
-                  color: Colors.black26,
-                  blurRadius: 10,
-                  offset: Offset(0, 5),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  isError ? Icons.error_outline : Icons.check_circle,
-                  color: Colors.white,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    message,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-    Overlay.of(context).insert(overlayEntry);
-    Future.delayed(const Duration(seconds: 3), () => overlayEntry.remove());
-  }
-
-  Future<void> _pickImage() async {
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
-    if (pickedFile != null) {
-      setState(() {
-        _idDocument = File(pickedFile.path);
-      });
-    }
-  }
-
+  // ── Submit ────────────────────────────────────────────────────────────────
   Future<void> _updateProfile() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
 
     try {
-      String? docPath = widget.profile.identificationUrl;
-      final userId = Supabase.instance.client.auth.currentUser!.id;
+      final uid = Supabase.instance.client.auth.currentUser!.id;
 
-      if (_idDocument != null) {
-        final fileName =
-            'id_${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-        await Supabase.instance.client.storage
-            .from('vendor_docs')
-            .upload(fileName, _idDocument!);
-        docPath = fileName;
-      }
+      final contacts = _businessContacts
+          .where((c) => c.controller.text.trim().isNotEmpty)
+          .map((c) => '+${c.countryCode} ${c.controller.text.trim()}')
+          .toList();
 
       await Supabase.instance.client
           .from('vendors')
           .update({
-            'full_name': _nameController.text,
-            'phone': '+$_selectedCountryCode ${_phoneController.text}',
-            'address': _addressController.text,
-            'city': _cityController.text,
-            'state': _stateController.text,
-            'pincode': _pincodeController.text,
-            'identification_url': docPath,
-            'role': _selectedRole, // Update role
-            // Resubmit for verification if rejected
-            'verification_status':
-                widget.profile.verificationStatus == 'rejected'
-                ? 'pending'
-                : widget.profile.verificationStatus,
+            'full_name': _nameController.text.trim(),
+            'business_name': _businessNameController.text.trim(),
+            'address': _addressController.text.trim(),
+            'city': _cityController.text.trim(),
+            'state': _stateController.text.trim(),
+            'pincode': _pincodeController.text.trim(),
+            'business_contacts': contacts,
+            // Only set pending for non-rejected (rejected goes through page 2 first)
+            if (widget.profile.verificationStatus != 'rejected')
+              'verification_status': widget.profile.verificationStatus,
+            'business_submitted': true,
           })
-          .eq('id', userId);
+          .eq('id', uid);
 
       if (mounted) {
-        _showCustomToast("Profile Updated Successfully", isError: false);
-        Navigator.pop(context, true); // Return true to indicate update
+        if (widget.profile.verificationStatus == 'rejected') {
+          // Navigate to page 2 — business details
+          final updatedProfile = widget.profile.copyWith(
+            fullName: _nameController.text.trim(),
+            businessName: _businessNameController.text.trim(),
+            address: _addressController.text.trim(),
+            city: _cityController.text.trim(),
+            state: _stateController.text.trim(),
+            pincode: _pincodeController.text.trim(),
+            businessContacts: contacts,
+          );
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => EditBusinessDetailsPage(profile: updatedProfile),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Application updated successfully.'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          Navigator.pop(context, true);
+        }
       }
     } catch (e) {
-      if (mounted) _showCustomToast("Error updating profile: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
+  // ── Build ─────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: _bg,
       appBar: AppBar(
-        title: const Text("Edit Application"),
-        backgroundColor: const Color(0xff0c1c2c),
-        foregroundColor: Colors.white,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        title: const Text(
+          'Edit Application',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+        ),
+        iconTheme: const IconThemeData(color: Colors.white),
       ),
-      body: SafeArea(
-        child: Stack(
-          children: [
-            SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      "Update your details below to process your application.",
-                      style: TextStyle(color: Colors.grey),
-                    ),
+      body: Stack(
+        children: [
+          SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Step indicator (only for rejected vendors)
+                  if (widget.profile.verificationStatus == 'rejected') ...[
+                    _buildStepIndicator(),
                     const SizedBox(height: 20),
-
-                    TextFormField(
-                      controller: _nameController,
-                      decoration: const InputDecoration(
-                        labelText: 'Full Name',
-                        prefixIcon: Icon(Icons.person),
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: Validators.validateFullName,
-                    ),
-                    const SizedBox(height: 20),
-
-                    // Role Selection
-                    _buildRoleSelector(),
-                    const SizedBox(height: 15),
-
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        GestureDetector(
-                          onTap: () {
-                            showCountryPicker(
-                              context: context,
-                              showPhoneCode: true,
-                              onSelect: (c) => setState(
-                                () => _selectedCountryCode = c.phoneCode,
-                              ),
-                            );
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 16,
-                            ),
-                            decoration: BoxDecoration(
-                              border: Border.all(color: Colors.grey),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              "+$_selectedCountryCode",
-                              style: const TextStyle(fontSize: 16),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: TextFormField(
-                            controller: _phoneController,
-                            decoration: const InputDecoration(
-                              labelText: 'Phone',
-                              prefixIcon: Icon(Icons.phone),
-                              border: OutlineInputBorder(),
-                            ),
-                            keyboardType: TextInputType.phone,
-                            validator: Validators.validatePhone,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 15),
-
-                    TextFormField(
-                      controller: _addressController,
-                      decoration: const InputDecoration(
-                        labelText: 'Address',
-                        prefixIcon: Icon(Icons.home),
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (v) => v!.isEmpty ? 'Required' : null,
-                    ),
-                    const SizedBox(height: 15),
-
-                    TextFormField(
-                      controller: _cityController,
-                      decoration: const InputDecoration(
-                        labelText: 'City',
-                        prefixIcon: Icon(Icons.location_city),
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (v) => v!.isEmpty ? 'Required' : null,
-                    ),
-                    const SizedBox(height: 15),
-
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextFormField(
-                            controller: _stateController,
-                            decoration: const InputDecoration(
-                              labelText: 'State',
-                              border: OutlineInputBorder(),
-                            ),
-                            validator: (v) => v!.isEmpty ? 'Required' : null,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: TextFormField(
-                            controller: _pincodeController,
-                            decoration: const InputDecoration(
-                              labelText: 'Pincode',
-                              border: OutlineInputBorder(),
-                            ),
-                            validator: (v) => v!.length < 6 ? 'Invalid' : null,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-
-                    const Text("Identification Document"),
-                    const SizedBox(height: 10),
-                    InkWell(
-                      onTap: _pickImage,
-                      child: Container(
-                        height: 150,
-                        width: double.infinity,
-                        decoration: BoxDecoration(
-                          border: Border.all(color: Colors.grey),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: _idDocument != null
-                            ? Image.file(_idDocument!, fit: BoxFit.cover)
-                            : (widget.profile.identificationUrl != null
-                                  ? Column(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        Icon(
-                                          Icons.check_circle,
-                                          color: Colors.green,
-                                          size: 50,
-                                        ),
-                                        Text(
-                                          "Document Uploaded",
-                                          style: TextStyle(color: Colors.green),
-                                        ),
-                                      ],
-                                    )
-                                  : Column(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        Icon(Icons.upload_file, size: 50),
-                                        Text("Tap to Change"),
-                                      ],
-                                    )),
-                      ),
-                    ),
-                    if (_idDocument != null)
-                      TextButton(
-                        onPressed: () => setState(() => _idDocument = null),
-                        child: const Text("Clear Selection"),
-                      ),
-
-                    const SizedBox(height: 30),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 50,
-                      child: ElevatedButton(
-                        onPressed: _updateProfile,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.amber,
-                          foregroundColor: Colors.black,
-                        ),
-                        child: const Text("Update Application"),
-                      ),
-                    ),
-                    const SizedBox(height: 30),
                   ],
-                ),
+
+                  // Note banner
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: Colors.amber.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.info_outline, color: _amber, size: 16),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Email, phone, date of birth and account type cannot '
+                            'be changed. Contact support if needed.',
+                            style: TextStyle(color: _amber, fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+
+                  // ── READ-ONLY DISPLAY ───────────────────────────────────
+                  _sectionHeader(Icons.lock_outline, 'Locked Fields'),
+                  const SizedBox(height: 16),
+                  _readOnlyTile(
+                    Icons.email_outlined,
+                    'Email',
+                    widget.profile.email,
+                  ),
+                  const SizedBox(height: 10),
+                  _readOnlyTile(
+                    Icons.phone_outlined,
+                    'Personal Phone',
+                    widget.profile.phone,
+                  ),
+                  const SizedBox(height: 10),
+                  _readOnlyTile(
+                    Icons.cake_outlined,
+                    'Date of Birth',
+                    widget.profile.dateOfBirth ?? '—',
+                  ),
+                  const SizedBox(height: 10),
+                  _readOnlyTile(
+                    Icons.badge_outlined,
+                    'Account Type',
+                    _roleLabel(widget.profile.role),
+                  ),
+                  const SizedBox(height: 32),
+
+                  // ── EDITABLE FIELDS ─────────────────────────────────────
+                  _sectionHeader(Icons.edit_outlined, 'About Yourself'),
+                  const SizedBox(height: 16),
+
+                  _buildTextField(
+                    label: 'Full Name',
+                    hint: 'As per ID proof',
+                    icon: Icons.person_outline,
+                    controller: _nameController,
+                    validator: Validators.validateFullName,
+                  ),
+                  const SizedBox(height: 32),
+
+                  _sectionHeader(Icons.business_outlined, 'About Business'),
+                  const SizedBox(height: 16),
+
+                  _buildTextField(
+                    label: 'Business Name',
+                    hint: 'Registered business / brand name',
+                    icon: Icons.storefront_outlined,
+                    controller: _businessNameController,
+                    validator: (v) =>
+                        (v == null || v.trim().isEmpty) ? 'Required' : null,
+                  ),
+                  const SizedBox(height: 16),
+
+                  _buildTextField(
+                    label: 'Address',
+                    hint: 'Street / locality',
+                    icon: Icons.home_outlined,
+                    controller: _addressController,
+                    validator: (v) =>
+                        (v == null || v.trim().isEmpty) ? 'Required' : null,
+                  ),
+                  const SizedBox(height: 16),
+
+                  _buildTextField(
+                    label: 'City',
+                    hint: 'City',
+                    icon: Icons.location_city_outlined,
+                    controller: _cityController,
+                    validator: (v) =>
+                        (v == null || v.trim().isEmpty) ? 'Required' : null,
+                  ),
+                  const SizedBox(height: 16),
+
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildTextField(
+                          label: 'State',
+                          hint: 'State',
+                          icon: Icons.map_outlined,
+                          controller: _stateController,
+                          validator: (v) =>
+                              (v == null || v.trim().isEmpty) ? 'Reqd' : null,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildTextField(
+                          label: 'Pincode',
+                          hint: '400001',
+                          icon: Icons.pin_outlined,
+                          controller: _pincodeController,
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                            LengthLimitingTextInputFormatter(6),
+                          ],
+                          validator: (v) => (v == null || v.trim().length < 6)
+                              ? 'Invalid'
+                              : null,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+
+                  // ── Business contacts ───────────────────────────────────
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _label('Business Contact Numbers'),
+                      IconButton(
+                        onPressed: () => setState(
+                          () => _businessContacts.add(_EditContact()),
+                        ),
+                        icon: const Icon(Icons.add_circle, color: _amber),
+                        tooltip: 'Add contact',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ],
+                  ),
+                  if (_businessContacts.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        'No business contacts added.',
+                        style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                      ),
+                    ),
+                  for (int i = 0; i < _businessContacts.length; i++) ...[
+                    const SizedBox(height: 10),
+                    _buildContactRow(_businessContacts[i], i),
+                  ],
+                  const SizedBox(height: 48),
+
+                  ElevatedButton.icon(
+                    onPressed: _isLoading ? null : _updateProfile,
+                    icon: _isLoading
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.black,
+                            ),
+                          )
+                        : Icon(
+                            widget.profile.verificationStatus == 'rejected'
+                                ? Icons.arrow_forward_outlined
+                                : Icons.save_outlined,
+                          ),
+                    label: Text(
+                      widget.profile.verificationStatus == 'rejected'
+                          ? 'Save & Continue →'
+                          : 'Save Changes',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _amber,
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 40),
+                ],
               ),
             ),
-
-            if (_isLoading)
-              Container(
-                color: Colors.black54,
-                child: const Center(
-                  child: CircularProgressIndicator(color: Colors.amber),
-                ),
+          ),
+          if (_isLoading)
+            Container(
+              color: Colors.black54,
+              child: const Center(
+                child: CircularProgressIndicator(color: _amber),
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }
 
-  Widget _buildRoleSelector() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+  // ── Step indicator (rejected resubmission flow) ──────────────────────────
+  Widget _buildStepIndicator() {
+    return Row(
       children: [
-        const Text(
-          "Account Type",
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        _stepChip('1', 'Profile Info', active: true),
+        const Expanded(child: Divider(color: Colors.grey, thickness: 1)),
+        _stepChip('2', 'Business Details'),
+      ],
+    );
+  }
+
+  Widget _stepChip(
+    String number,
+    String label, {
+    bool active = false,
+    bool done = false,
+  }) {
+    final color = done || active ? _amber : Colors.grey;
+    return Row(
+      children: [
+        Container(
+          width: 26,
+          height: 26,
+          decoration: BoxDecoration(
+            color: done
+                ? _amber
+                : (active
+                      ? Colors.amber.withValues(alpha: 0.15)
+                      : Colors.transparent),
+            shape: BoxShape.circle,
+            border: Border.all(color: color, width: 1.5),
+          ),
+          child: Center(
+            child: done
+                ? const Icon(Icons.check, size: 13, color: Colors.black)
+                : Text(
+                    number,
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+          ),
         ),
-        const SizedBox(height: 12),
-        _buildRoleOption(
-          value: 'venue_distributor',
-          title: 'Venue Distributor',
-          description: 'Manage wedding venues',
-          icon: Icons.business,
-        ),
-        const SizedBox(height: 8),
-        _buildRoleOption(
-          value: 'vendor_distributor',
-          title: 'Vendor Services',
-          description: 'Manage vendor services (catering, photography, etc.)',
-          icon: Icons.store,
-        ),
-        const SizedBox(height: 8),
-        _buildRoleOption(
-          value: 'venue_vendor_distributor',
-          title: 'Both (Venue & Services)',
-          description: 'Combined access to venues and services',
-          icon: Icons.business_center,
-        ),
-        const SizedBox(height: 8),
-        _buildRoleOption(
-          value: 'admin',
-          title: 'Admin Account',
-          description: 'Full system access (requires admin approval)',
-          icon: Icons.admin_panel_settings,
-          isSpecial: true,
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: TextStyle(
+            color: color,
+            fontSize: 12,
+            fontWeight: active ? FontWeight.w600 : FontWeight.normal,
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildRoleOption({
-    required String value,
-    required String title,
-    required String description,
-    required IconData icon,
-    bool isSpecial = false,
-  }) {
-    final isSelected = _selectedRole == value;
-    return GestureDetector(
-      onTap: () => setState(() => _selectedRole = value),
-      child: Container(
-        decoration: BoxDecoration(
-          color: isSelected
-              ? Colors.amber.withOpacity(0.1)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected ? Colors.amber : Colors.grey.shade300,
-            width: isSelected ? 2 : 1,
-          ),
-        ),
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          children: [
-            Icon(
-              icon,
-              color: isSelected ? Colors.amber : Colors.grey[600],
-              size: 28,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        title,
-                        style: TextStyle(
-                          color: isSelected ? Colors.amber : Colors.black87,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 15,
-                        ),
-                      ),
-                      if (isSpecial) ...[
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.orange.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: const Text(
-                            'APPROVAL REQUIRED',
-                            style: TextStyle(
-                              color: Colors.orange,
-                              fontSize: 9,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    description,
-                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                  ),
-                ],
-              ),
-            ),
-            Radio<String>(
-              value: value,
-              groupValue: _selectedRole,
-              onChanged: (v) => setState(() => _selectedRole = v!),
-              activeColor: Colors.amber,
-            ),
-          ],
+  // ── Widgets ───────────────────────────────────────────────────────────────
+
+  Widget _sectionHeader(IconData icon, String text) => Row(
+    children: [
+      Icon(icon, color: _amber, size: 16),
+      const SizedBox(width: 8),
+      Text(
+        text,
+        style: const TextStyle(
+          color: _amber,
+          fontWeight: FontWeight.w700,
+          fontSize: 14,
+          letterSpacing: 0.5,
         ),
       ),
+    ],
+  );
+
+  Widget _readOnlyTile(IconData icon, String label, String value) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    decoration: BoxDecoration(
+      color: Colors.white.withValues(alpha: 0.03),
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+    ),
+    child: Row(
+      children: [
+        Icon(icon, color: Colors.grey[600], size: 18),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(color: Colors.grey[600], fontSize: 11),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: const TextStyle(color: Colors.white54, fontSize: 15),
+              ),
+            ],
+          ),
+        ),
+        const Icon(Icons.lock_outline, color: Colors.grey, size: 14),
+      ],
+    ),
+  );
+
+  Widget _label(String text) => Text(
+    text,
+    style: TextStyle(color: Colors.grey[300], fontWeight: FontWeight.w500),
+  );
+
+  Widget _buildTextField({
+    required String label,
+    required String hint,
+    required IconData icon,
+    required TextEditingController controller,
+    required String? Function(String?)? validator,
+    TextInputType? keyboardType,
+    List<TextInputFormatter>? inputFormatters,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _label(label),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            color: _fieldBg,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: _fieldBorder),
+          ),
+          child: TextFormField(
+            controller: controller,
+            validator: validator,
+            keyboardType: keyboardType,
+            inputFormatters: inputFormatters,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              hintText: hint,
+              hintStyle: TextStyle(color: Colors.grey[500]),
+              border: InputBorder.none,
+              prefixIcon: Icon(icon, color: _amberIcon),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 16,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
+
+  Widget _buildContactRow(_EditContact contact, int index) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Mobile / telephone toggle
+        GestureDetector(
+          onTap: () => setState(() => contact.isMobile = !contact.isMobile),
+          child: Tooltip(
+            message: contact.isMobile ? 'Mobile' : 'Telephone',
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 16),
+              decoration: BoxDecoration(
+                color: _fieldBg,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: _fieldBorder),
+              ),
+              child: Icon(
+                contact.isMobile ? Icons.phone_android : Icons.phone_outlined,
+                color: _amber,
+                size: 20,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        // Country code
+        GestureDetector(
+          onTap: () => showCountryPicker(
+            context: context,
+            showPhoneCode: true,
+            onSelect: (c) => setState(() => contact.countryCode = c.phoneCode),
+            countryListTheme: CountryListThemeData(
+              bottomSheetHeight: 500,
+              backgroundColor: const Color(0xFF121212),
+              textStyle: const TextStyle(color: Colors.white),
+              searchTextStyle: const TextStyle(color: Colors.white),
+              inputDecoration: InputDecoration(
+                hintStyle: TextStyle(color: Colors.grey[500]),
+                prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                filled: true,
+                fillColor: Colors.white.withValues(alpha: 0.1),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+          ),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 16),
+            decoration: BoxDecoration(
+              color: _fieldBg,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: _fieldBorder),
+            ),
+            child: Text(
+              '+${contact.countryCode}',
+              style: const TextStyle(color: Colors.white, fontSize: 15),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        // Number field
+        Expanded(
+          child: Container(
+            decoration: BoxDecoration(
+              color: _fieldBg,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: _fieldBorder),
+            ),
+            child: TextFormField(
+              controller: contact.controller,
+              keyboardType: TextInputType.phone,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: contact.isMobile ? '9876543210' : '022-12345678',
+                hintStyle: TextStyle(color: Colors.grey[500]),
+                border: InputBorder.none,
+                prefixIcon: Icon(
+                  contact.isMobile
+                      ? Icons.smartphone_outlined
+                      : Icons.call_outlined,
+                  color: _amberIcon,
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 16,
+                ),
+              ),
+              validator: (v) {
+                if (v == null || v.trim().isEmpty) {
+                  return 'Enter a number or remove this row';
+                }
+                final stripped = v.trim().replaceAll(RegExp(r'[\s]'), '');
+                if (contact.isMobile) {
+                  if (!RegExp(r'^\d{10}$').hasMatch(stripped)) {
+                    return 'Enter exactly 10 digits';
+                  }
+                } else {
+                  if (!RegExp(r'^[\d\-]{5,15}$').hasMatch(stripped)) {
+                    return 'Digits and hyphens only';
+                  }
+                }
+                return null;
+              },
+            ),
+          ),
+        ),
+        const SizedBox(width: 4),
+        IconButton(
+          onPressed: () => setState(() => _businessContacts.removeAt(index)),
+          icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
+          padding: const EdgeInsets.only(top: 8),
+          constraints: const BoxConstraints(),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Role display helper ───────────────────────────────────────────────────────
+String _roleLabel(String role) {
+  switch (role) {
+    case 'venue_distributor':
+      return 'Venue Distributor';
+    case 'vendor_distributor':
+      return 'Vendor Services';
+    case 'venue_vendor_distributor':
+      return 'Both (Venue & Services)';
+    case 'admin':
+      return 'Admin Account';
+    default:
+      return role;
+  }
+}
+
+// ── Data class ────────────────────────────────────────────────────────────────
+class _EditContact {
+  final TextEditingController controller = TextEditingController();
+  bool isMobile = true;
+  String countryCode = '91';
 }
