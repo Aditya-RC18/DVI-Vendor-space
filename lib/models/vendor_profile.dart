@@ -129,6 +129,7 @@ class VendorProfile {
     String? idNumber,
     String? bankProofUrl,
     String? businessProofUrl,
+    required profileImageUrl,
   }) {
     return VendorProfile(
       id: id ?? this.id,
@@ -162,4 +163,6 @@ class VendorProfile {
       role == 'venue_distributor' || role == 'venue_vendor_distributor';
   bool get canManageVendorServices =>
       role == 'vendor_distributor' || role == 'venue_vendor_distributor';
+
+  get profileImageUrl => null;
 }
