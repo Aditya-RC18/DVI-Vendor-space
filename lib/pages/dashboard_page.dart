@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:vendor/pages/add_product_page.dart';
+import 'package:vendor/pages/sales_list_page.dart';
 import 'package:vendor/pages/product_list_page.dart';
 import 'package:vendor/pages/vendor_profile_view.dart';
 import 'uploads_page.dart';
@@ -116,30 +117,62 @@ class _VendorHomeState extends State<VendorHome> {
   // Key to force FutureBuilder to refresh
   Key _refreshKey = UniqueKey();
 
-  Future<Map<String, int>> getProductMetrics() async {
+  Future<Map<String, dynamic>> getSalesMetrics() async {
     final supabase = Supabase.instance.client;
     final user = supabase.auth.currentUser;
 
-    if (user == null) return {'total': 0, 'lowStock': 0};
+    if (user == null)
+      return {
+        'totalProducts': 0,
+        'lowStockAlerts': 0,
+        'totalSales': 0,
+        'totalOrders': 0,
+        'totalRevenue': 0.0,
+        'pendingOrders': 0,
+        'notifications': 0,
+      };
 
     try {
-      // Fetch all product IDs for this vendor to determine total count
+      // Fetch product counts (used for inventory/low stock)
       final allProducts = await supabase
           .from('products')
           .select('id')
           .eq('vendor_id', user.id);
 
-      // Fetch products where quantity is less than 5 for low stock count
       final lowStockProducts = await supabase
           .from('products')
           .select('id')
           .eq('vendor_id', user.id)
           .lt('quantity', 5);
 
-      return {'total': allProducts.length, 'lowStock': lowStockProducts.length};
+      // NOTE: The following sales-related fields are placeholders.
+      // Replace with real `orders` table queries when ready.
+      final totalSales = 0;
+      final totalOrders = 0;
+      final totalRevenue = 0.0;
+      final pendingOrders = 0;
+      final notifications = 0;
+
+      return {
+        'totalProducts': allProducts.length,
+        'lowStockAlerts': lowStockProducts.length,
+        'totalSales': totalSales,
+        'totalOrders': totalOrders,
+        'totalRevenue': totalRevenue,
+        'pendingOrders': pendingOrders,
+        'notifications': notifications,
+      };
     } catch (e) {
       debugPrint("Error fetching metrics: $e");
-      return {'total': 0, 'lowStock': 0};
+      return {
+        'totalProducts': 0,
+        'lowStockAlerts': 0,
+        'totalSales': 0,
+        'totalOrders': 0,
+        'totalRevenue': 0.0,
+        'pendingOrders': 0,
+        'notifications': 0,
+      };
     }
   }
 
@@ -198,9 +231,9 @@ class _VendorHomeState extends State<VendorHome> {
               ),
             ),
             const SizedBox(height: 16),
-            FutureBuilder<Map<String, int>>(
+            FutureBuilder<Map<String, dynamic>>(
               key: _refreshKey,
-              future: getProductMetrics(),
+              future: getSalesMetrics(),
               builder: (context, snapshot) {
                 // Show a small loader inside the card area while loading
                 if (snapshot.connectionState == ConnectionState.waiting) {
@@ -212,19 +245,37 @@ class _VendorHomeState extends State<VendorHome> {
                   );
                 }
 
-                final data = snapshot.data ?? {'total': 0, 'lowStock': 0};
+                final data =
+                    snapshot.data ??
+                    {
+                      'totalProducts': 0,
+                      'lowStockAlerts': 0,
+                      'totalSales': 0,
+                      'totalOrders': 0,
+                      'totalRevenue': 0.0,
+                      'pendingOrders': 0,
+                      'notifications': 0,
+                    };
 
                 return Row(
                   children: [
                     Expanded(
-                      child: _buildStatCard(
-                        title: "Sales Info",
-                        accentColor: Colors.blue.shade700,
-                        icon: Icons.insights,
-                        items: [
-                          _statRow("Total Products", "${data['total']}"),
-                          _statRow("Revenue", "₹0.00"),
-                        ],
+                      child: InkWell(
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => SalesListPage(metrics: data),
+                          ),
+                        ),
+                        child: _buildStatCard(
+                          title: "Sales Info",
+                          accentColor: Colors.blue.shade700,
+                          icon: Icons.insights,
+                          items: [
+                            _statRow("Total Sales", "${data['totalSales']}"),
+                            _statRow("Sales Details", "View All"),
+                          ],
+                        ),
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -244,8 +295,8 @@ class _VendorHomeState extends State<VendorHome> {
                           items: [
                             _statRow(
                               "Low Stock",
-                              "${data['lowStock']} Items",
-                              isAlert: data['lowStock']! > 0,
+                              "${data['lowStockAlerts']} Items",
+                              isAlert: (data['lowStockAlerts'] ?? 0) > 0,
                             ),
                             _statRow("Inventory", "View All"),
                           ],
