@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -27,7 +28,8 @@ class _AddProductPageState extends State<AddProductPage> {
   final _dimsController = TextEditingController();
 
   final ImagePicker _picker = ImagePicker();
-  List<XFile> _selectedImages = [];
+  List<XFile> _selectedImages = []; // Newly selected images
+  List<String> _existingImageUrls = []; // Existing images from database
   String? _selectedCategory;
   List<Map<String, dynamic>> _supabaseCategories = [];
 
@@ -44,6 +46,25 @@ class _AddProductPageState extends State<AddProductPage> {
       _discountController.text = p['discount_price']?.toString() ?? '';
       _qtyController.text = p['quantity']?.toString() ?? '';
       _dimsController.text = p['dimensions'] ?? '';
+
+      // Load existing images
+      final imageUrlData = p['image_url'];
+      if (imageUrlData != null && imageUrlData.isNotEmpty) {
+        try {
+          if (imageUrlData is String) {
+            // Parse JSON string
+            final List<dynamic> parsed = jsonDecode(imageUrlData);
+            _existingImageUrls = parsed.map((url) => url.toString()).toList();
+          } else if (imageUrlData is List) {
+            _existingImageUrls = imageUrlData
+                .map((url) => url.toString())
+                .toList();
+          }
+        } catch (e) {
+          debugPrint('Error parsing image URL: $e');
+          _existingImageUrls = [];
+        }
+      }
     }
   }
 
@@ -62,6 +83,9 @@ class _AddProductPageState extends State<AddProductPage> {
 
   Future<List<String>> _uploadImages(String productId) async {
     List<String> imageUrls = [];
+    debugPrint('Starting image upload for product: $productId');
+    debugPrint('Number of images to upload: ${_selectedImages.length}');
+
     for (int i = 0; i < _selectedImages.length; i++) {
       final image = _selectedImages[i];
       final Uint8List bytes = await image.readAsBytes();
@@ -69,21 +93,33 @@ class _AddProductPageState extends State<AddProductPage> {
       final filePath =
           'product_images/$productId/img_${DateTime.now().millisecondsSinceEpoch}_$i.$fileExt';
 
-      await _supabase.storage
-          .from('vendor_assets')
-          .upload(
-            filePath,
-            bytes as File,
-            fileOptions: FileOptions(
-              contentType: 'image/$fileExt',
-              upsert: true,
-            ),
-          );
+      try {
+        debugPrint('Uploading image $i to: $filePath');
+        await _supabase.storage
+            .from('vendor_assets')
+            .uploadBinary(
+              filePath,
+              bytes,
+              fileOptions: FileOptions(
+                contentType: 'image/$fileExt',
+                upsert: true,
+              ),
+            );
+        debugPrint('Image $i uploaded successfully');
 
-      imageUrls.add(
-        _supabase.storage.from('vendor_assets').getPublicUrl(filePath),
-      );
+        final publicUrl = _supabase.storage
+            .from('vendor_assets')
+            .getPublicUrl(filePath);
+        debugPrint('Image $i public URL: $publicUrl');
+        imageUrls.add(publicUrl);
+      } catch (e) {
+        debugPrint('Error uploading image $i: $e');
+        // Continue with other images even if one fails
+        continue;
+      }
     }
+    debugPrint('Total uploaded images: ${imageUrls.length}');
+    debugPrint('Image URLs: $imageUrls');
     return imageUrls;
   }
 
@@ -120,20 +156,67 @@ class _AddProductPageState extends State<AddProductPage> {
         productId = res['id'].toString();
       }
 
+      debugPrint('Selected images count: ${_selectedImages.length}');
+      debugPrint('Existing images count: ${_existingImageUrls.length}');
+
       if (_selectedImages.isNotEmpty) {
-        final urls = await _uploadImages(productId);
+        debugPrint('Uploading new images...');
+        final newUrls = await _uploadImages(productId);
+        debugPrint('New URLs received: $newUrls');
+        final allUrls = [..._existingImageUrls, ...newUrls];
+        debugPrint('All URLs combined: $allUrls');
+        final imageUrlJson = jsonEncode(allUrls);
+        debugPrint('JSON to save: $imageUrlJson');
         await _supabase
             .from('products')
-            .update({'image_urls': urls})
+            .update({'image_url': imageUrlJson})
             .eq('id', productId);
+        debugPrint('Images saved to database');
+      } else if (_existingImageUrls.isNotEmpty) {
+        // Update with existing images only (in case some were removed)
+        debugPrint('Saving existing images only...');
+        final imageUrlJson = jsonEncode(_existingImageUrls);
+        await _supabase
+            .from('products')
+            .update({'image_url': imageUrlJson})
+            .eq('id', productId);
+        debugPrint('Existing images saved to database');
+      } else {
+        debugPrint('No images to save');
       }
 
-      if (mounted) Navigator.pop(context, true);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Product saved successfully!')),
+        );
+        // Clear form and images
+        _nameController.clear();
+        _descController.clear();
+        _priceController.clear();
+        _discountController.clear();
+        _qtyController.clear();
+        _dimsController.clear();
+        setState(() {
+          _selectedImages.clear();
+          _existingImageUrls.clear();
+          _selectedCategory = null;
+        });
+        Navigator.pop(context, true);
+      }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
+        String errorMessage = 'Error saving product';
+        if (e.toString().contains('Bucket not found')) {
+          errorMessage =
+              'Storage bucket not found. Please check your Supabase storage configuration.';
+        } else if (e.toString().contains('permission')) {
+          errorMessage =
+              'Permission denied. Please check your storage bucket policies.';
+        }
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+        ).showSnackBar(SnackBar(content: Text('$errorMessage: $e')));
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -165,9 +248,12 @@ class _AddProductPageState extends State<AddProductPage> {
                 height: 120,
                 child: ListView.builder(
                   scrollDirection: Axis.horizontal,
-                  itemCount: _selectedImages.length + 1,
+                  itemCount:
+                      _existingImageUrls.length + _selectedImages.length + 1,
                   itemBuilder: (context, index) {
-                    if (index == _selectedImages.length) {
+                    // Add button at the end
+                    if (index ==
+                        _existingImageUrls.length + _selectedImages.length) {
                       return GestureDetector(
                         onTap: _pickImages,
                         child: Container(
@@ -183,15 +269,89 @@ class _AddProductPageState extends State<AddProductPage> {
                         ),
                       );
                     }
+
+                    // Show existing images first
+                    if (index < _existingImageUrls.length) {
+                      return Container(
+                        width: 100,
+                        margin: const EdgeInsets.only(right: 8),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          image: DecorationImage(
+                            image: NetworkImage(_existingImageUrls[index]),
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                        child: Stack(
+                          children: [
+                            Positioned(
+                              top: 4,
+                              right: 4,
+                              child: GestureDetector(
+                                onTap: () {
+                                  setState(() {
+                                    _existingImageUrls.removeAt(index);
+                                  });
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.all(2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red.withOpacity(0.8),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.close,
+                                    color: Colors.white,
+                                    size: 16,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+
+                    // Show newly selected images
+                    final selectedIndex = index - _existingImageUrls.length;
                     return Container(
                       width: 100,
                       margin: const EdgeInsets.only(right: 8),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(12),
                         image: DecorationImage(
-                          image: NetworkImage(_selectedImages[index].path),
+                          image: FileImage(
+                            File(_selectedImages[selectedIndex].path),
+                          ),
                           fit: BoxFit.cover,
                         ),
+                      ),
+                      child: Stack(
+                        children: [
+                          Positioned(
+                            top: 4,
+                            right: 4,
+                            child: GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  _selectedImages.removeAt(selectedIndex);
+                                });
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(2),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.withOpacity(0.8),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.close,
+                                  color: Colors.white,
+                                  size: 16,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     );
                   },

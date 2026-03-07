@@ -113,7 +113,16 @@ class _EditVendorProfilePageState extends State<EditVendorProfilePage> {
       return storage.getPublicUrl(fileName);
     } catch (e) {
       debugPrint("Upload Error: $e");
-      return null;
+      if (e.toString().contains('Bucket not found')) {
+        throw Exception(
+          'Storage bucket not found. Please check your Supabase storage configuration.',
+        );
+      } else if (e.toString().contains('permission')) {
+        throw Exception(
+          'Permission denied. Please check your storage bucket policies.',
+        );
+      }
+      throw Exception('Failed to upload profile image: $e');
     }
   }
 

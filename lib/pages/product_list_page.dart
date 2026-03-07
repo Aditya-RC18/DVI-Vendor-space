@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:convert';
 import 'add_product_page.dart';
 
 class ProductListPage extends StatefulWidget {
@@ -79,7 +80,21 @@ class _ProductListPageState extends State<ProductListPage> {
             itemCount: products.length,
             itemBuilder: (context, index) {
               final product = products[index];
-              final List<dynamic> images = product['image_urls'] ?? [];
+              List<dynamic> images = [];
+
+              final imageUrlData = product['image_url'];
+              if (imageUrlData != null && imageUrlData.isNotEmpty) {
+                try {
+                  if (imageUrlData is String) {
+                    images = jsonDecode(imageUrlData);
+                  } else if (imageUrlData is List) {
+                    images = imageUrlData;
+                  }
+                } catch (e) {
+                  debugPrint('Error parsing image URL: $e');
+                }
+              }
+
               final bool isLowStock = (product['quantity'] ?? 0) < 5;
 
               return Card(
