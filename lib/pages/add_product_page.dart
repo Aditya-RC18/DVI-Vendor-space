@@ -28,7 +28,7 @@ class _AddProductPageState extends State<AddProductPage> {
   final _dimsController = TextEditingController();
 
   final ImagePicker _picker = ImagePicker();
-  List<XFile> _selectedImages = []; // Newly selected images
+  final List<XFile> _selectedImages = []; // Newly selected images
   List<String> _existingImageUrls = []; // Existing images from database
   String? _selectedCategory;
   List<Map<String, dynamic>> _supabaseCategories = [];
@@ -83,6 +83,7 @@ class _AddProductPageState extends State<AddProductPage> {
 
   Future<List<String>> _uploadImages(String productId) async {
     List<String> imageUrls = [];
+    final userId = _supabase.auth.currentUser!.id;
     debugPrint('Starting image upload for product: $productId');
     debugPrint('Number of images to upload: ${_selectedImages.length}');
 
@@ -91,10 +92,9 @@ class _AddProductPageState extends State<AddProductPage> {
       final Uint8List bytes = await image.readAsBytes();
       final fileExt = image.name.split('.').last;
       final filePath =
-          'product_images/$productId/img_${DateTime.now().millisecondsSinceEpoch}_$i.$fileExt';
+          '$userId/$productId/img_${DateTime.now().millisecondsSinceEpoch}_$i.$fileExt';
 
       try {
-        debugPrint('Uploading image $i to: $filePath');
         await _supabase.storage
             .from('vendor_assets')
             .uploadBinary(
@@ -107,15 +107,12 @@ class _AddProductPageState extends State<AddProductPage> {
             );
         debugPrint('Image $i uploaded successfully');
 
-        final publicUrl = _supabase.storage
+        final url = _supabase.storage
             .from('vendor_assets')
             .getPublicUrl(filePath);
-        debugPrint('Image $i public URL: $publicUrl');
-        imageUrls.add(publicUrl);
+        imageUrls.add(url);
       } catch (e) {
-        debugPrint('Error uploading image $i: $e');
-        // Continue with other images even if one fails
-        continue;
+        debugPrint("Upload failed: $e");
       }
     }
     debugPrint('Total uploaded images: ${imageUrls.length}');
@@ -320,9 +317,7 @@ class _AddProductPageState extends State<AddProductPage> {
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(12),
                         image: DecorationImage(
-                          image: FileImage(
-                            File(_selectedImages[selectedIndex].path),
-                          ),
+                          image: NetworkImage(_selectedImages[index].path),
                           fit: BoxFit.cover,
                         ),
                       ),
@@ -376,7 +371,7 @@ class _AddProductPageState extends State<AddProductPage> {
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
-                value: _selectedCategory,
+                initialValue: _selectedCategory,
                 items: _supabaseCategories
                     .map(
                       (c) => DropdownMenuItem(

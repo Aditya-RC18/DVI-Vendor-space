@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:vendor/pages/add_product_page.dart';
+import 'package:vendor/pages/product_details_page.dart';
 import 'package:vendor/pages/sales_list_page.dart';
-import 'package:vendor/pages/product_list_page.dart';
 import 'package:vendor/pages/vendor_profile_view.dart';
 import 'uploads_page.dart';
 import 'report_issue_page.dart';
@@ -121,7 +120,7 @@ class _VendorHomeState extends State<VendorHome> {
     final supabase = Supabase.instance.client;
     final user = supabase.auth.currentUser;
 
-    if (user == null)
+    if (user == null) {
       return {
         'totalProducts': 0,
         'lowStockAlerts': 0,
@@ -131,6 +130,7 @@ class _VendorHomeState extends State<VendorHome> {
         'pendingOrders': 0,
         'notifications': 0,
       };
+    }
 
     try {
       // Fetch product counts (used for inventory/low stock)
