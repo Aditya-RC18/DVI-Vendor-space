@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "120756727705",
+    "project_id": "dreamventz2026",
+    "storage_bucket": "dreamventz2026.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:120756727705:android:ca75cf92510f16accaed08",
+        "android_client_info": {
+          "package_name": "com.example.custom_client"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBO4dk41aYdWvMEwU1qo67DrGNxkwj1B44"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:120756727705:android:02f32a1f3f9e30d7caed08",
+        "android_client_info": {
+          "package_name": "com.example.vendor"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBO4dk41aYdWvMEwU1qo67DrGNxkwj1B44"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -20,6 +20,10 @@ Future<void> main() async {
   runApp(const MyApp());
 }
 
+// ── Global Navigator Key ───────────────────────
+// Add this at the top of main.dart (outside all classes)
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -35,7 +39,7 @@ class MyApp extends StatelessWidget {
       ),
       initialRoute: '/',
       routes: {
-        '/': (context) => const AuthWrapper(),
+        '/': (context) => const LoginPage(),
         AppConstants.loginRoute: (context) => const LoginPage(),
         AppConstants.signupRoute: (context) => const SignupPage(),
         AppConstants.dashboardRoute: (context) => const DashboardPage(),
@@ -63,14 +67,90 @@ class _AuthWrapperState extends State<AuthWrapper> {
   void initState() {
     super.initState();
     _handleAuth();
+
+    // Start listening for new bookings as soon as vendor logs in
+    _listenToNewBookings();
   }
 
   @override
   void dispose() {
     _authSubscription.cancel();
+    _bookingChannel?.unsubscribe();
     super.dispose();
   }
 
+  // ── Real-time booking listener ─────────────
+  RealtimeChannel? _bookingChannel;
+
+  void _listenToNewBookings() {
+    _bookingChannel = Supabase.instance.client
+        .channel('bookings-channel')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'bookings',
+          callback: (payload) {
+            final newBooking = payload.newRecord;
+            debugPrint('📦 New booking received: $newBooking');
+
+            // Show notification banner
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _showNewBookingBanner(newBooking);
+            });
+          },
+        )
+        .subscribe();
+  }
+
+  void _showNewBookingBanner(Map<String, dynamic> data) {
+    // Get the current context from navigator key or use global key
+    final context = _currentWidget != null
+        ? ((_currentWidget as dynamic).key as GlobalKey?)?.currentContext
+        : null;
+
+    // Use ScaffoldMessenger with root context
+    final scaffoldContext = _getScaffoldContext();
+    if (scaffoldContext == null) return;
+
+    ScaffoldMessenger.of(scaffoldContext).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Text('🎉', style: TextStyle(fontSize: 22)),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'New Booking Received!',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                    color: Colors.white,
+                  ),
+                ),
+                Text(
+                  'Amount: ₹${data['total_amount']?.toString() ?? '0'}',
+                  style: const TextStyle(fontSize: 12, color: Colors.white70),
+                ),
+              ],
+            ),
+          ],
+        ),
+        backgroundColor: const Color(0xFF2D6A4F),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        duration: const Duration(seconds: 5),
+      ),
+    );
+  }
+
+  BuildContext? _getScaffoldContext() {
+    return navigatorKey.currentContext;
+  }
+
+  // ── Auth handling (your original code) ─────
   void _handleAuth() {
     _authSubscription = Supabase.instance.client.auth.onAuthStateChange.listen((
       data,
@@ -95,7 +175,6 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
     debugPrint('👤 Authenticated user: ${user.id}');
 
-    // Fetch Vendor Profile to check role
     final profile = await _authService.getVendorProfile();
 
     debugPrint('📋 Vendor profile: ${profile != null ? "Found" : "NOT Found"}');
@@ -108,7 +187,6 @@ class _AuthWrapperState extends State<AuthWrapper> {
     if (mounted) {
       setState(() {
         if (profile == null) {
-          // Authenticated but no vendor profile yet — check role from metadata
           final metaRole = user.userMetadata?['role'] as String? ?? '';
           if (metaRole == 'admin') {
             debugPrint('➡️  Redirecting to: Admin Setup Page');
@@ -118,24 +196,18 @@ class _AuthWrapperState extends State<AuthWrapper> {
             _currentWidget = const CompleteVendorProfilePage();
           }
         } else if (profile.isAdmin) {
-          // Admin user -> Admin Page
           debugPrint('➡️  Redirecting to: Admin Page');
           _currentWidget = const AdminPage();
         } else if (profile.verificationStatus == 'rejected') {
-          // Rejected vendors always go to status page (to see rejection reason
-          // and edit their application) — regardless of businessSubmitted flag.
           debugPrint('➡️  Redirecting to: Verification Status Page (rejected)');
           _currentWidget = VerificationStatusPage(profile: profile);
         } else if (!profile.businessSubmitted) {
-          // Vendor row exists but page 3 not yet submitted
           debugPrint('➡️  Redirecting to: Business Details Page');
           _currentWidget = const BusinessDetailsPage();
         } else if (profile.verificationStatus == 'verified') {
-          // Verified vendor -> Dashboard
           debugPrint('➡️  Redirecting to: Dashboard');
           _currentWidget = const DashboardPage();
         } else {
-          // Pending vendor -> Verification Status Page
           debugPrint('➡️  Redirecting to: Verification Status Page (pending)');
           _currentWidget = VerificationStatusPage(profile: profile);
         }
@@ -152,3 +224,5 @@ class _AuthWrapperState extends State<AuthWrapper> {
     return _currentWidget ?? const LoginPage();
   }
 }
+
+
