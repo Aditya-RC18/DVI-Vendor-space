@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:vendor/pages/product_details_page.dart';
-import 'package:vendor/pages/sales_list_page.dart';
-import 'package:vendor/pages/vendor_profile_view.dart';
-import 'uploads_page.dart';
+// Ensure these paths match your project structure exactly
+import 'product_details_page.dart';
+import 'sales_list_page.dart';
+import 'vendor_profile_view.dart';
 import 'report_issue_page.dart';
-import 'extras_page.dart';
 import '../services/auth_service.dart';
 import '../utils/constants.dart';
 
@@ -18,7 +17,6 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage> {
-  int _currentIndex = 0;
   final _supabase = Supabase.instance.client;
   String _userName = "Vendor";
 
@@ -40,13 +38,6 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
-  late final List<Widget> _pages = [
-    const VendorHome(),
-    const UploadsPage(),
-    const ExtrasPage(),
-    const Center(child: Text("Settings")),
-  ];
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -59,16 +50,28 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
         ),
         backgroundColor: const Color(0xff0c1c2c),
+        elevation: 0,
         actions: [
+          // Settings Gear Icon
           IconButton(
-            icon: const Icon(Icons.report_problem, color: Colors.white),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const ReportIssuePage()),
-            ),
+            icon: const Icon(Icons.settings, color: Colors.white),
+            tooltip: 'Settings',
+            onPressed: () async {
+              final profile = await AuthService().getVendorProfile();
+              if (profile != null && context.mounted) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => VendorProfileView(profile: profile),
+                  ),
+                );
+              }
+            },
           ),
+          // Logout Icon
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.white),
+            tooltip: 'Logout',
             onPressed: () async {
               await AuthService().signOut();
               if (context.mounted) {
@@ -79,27 +82,26 @@ class _DashboardPageState extends State<DashboardPage> {
               }
             },
           ),
+          const SizedBox(width: 8),
         ],
       ),
-      body: _pages[_currentIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        selectedItemColor: const Color(0xff0c1c2c),
-        unselectedItemColor: Colors.grey,
-        type: BottomNavigationBarType.fixed,
-        onTap: (index) => setState(() => _currentIndex = index),
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Home'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.upload_file),
-            label: 'Uploads',
-          ),
-          BottomNavigationBarItem(icon: Icon(Icons.star), label: 'Extras'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.settings),
-            label: 'Settings',
-          ),
-        ],
+
+      body: const VendorHome(),
+
+      // Floating Action Button for Support
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const ReportIssuePage()),
+          );
+        },
+        backgroundColor: const Color(0xff0c1c2c),
+        icon: const Icon(Icons.support_agent, color: Colors.white),
+        label: const Text(
+          "Report Issue",
+          style: TextStyle(color: Colors.white),
+        ),
       ),
     );
   }
@@ -113,27 +115,15 @@ class VendorHome extends StatefulWidget {
 }
 
 class _VendorHomeState extends State<VendorHome> {
-  // Key to force FutureBuilder to refresh
   Key _refreshKey = UniqueKey();
 
   Future<Map<String, dynamic>> getSalesMetrics() async {
     final supabase = Supabase.instance.client;
     final user = supabase.auth.currentUser;
 
-    if (user == null) {
-      return {
-        'totalProducts': 0,
-        'lowStockAlerts': 0,
-        'totalSales': 0,
-        'totalOrders': 0,
-        'totalRevenue': 0.0,
-        'pendingOrders': 0,
-        'notifications': 0,
-      };
-    }
+    if (user == null) return _emptyMetrics();
 
     try {
-      // Fetch product counts (used for inventory/low stock)
       final allProducts = await supabase
           .from('products')
           .select('id')
@@ -145,36 +135,31 @@ class _VendorHomeState extends State<VendorHome> {
           .eq('vendor_id', user.id)
           .lt('quantity', 5);
 
-      // NOTE: The following sales-related fields are placeholders.
-      // Replace with real `orders` table queries when ready.
-      final totalSales = 0;
-      final totalOrders = 0;
-      final totalRevenue = 0.0;
-      final pendingOrders = 0;
-      final notifications = 0;
-
+      // Placeholders for expanded metrics
       return {
         'totalProducts': allProducts.length,
         'lowStockAlerts': lowStockProducts.length,
-        'totalSales': totalSales,
-        'totalOrders': totalOrders,
-        'totalRevenue': totalRevenue,
-        'pendingOrders': pendingOrders,
-        'notifications': notifications,
-      };
-    } catch (e) {
-      debugPrint("Error fetching metrics: $e");
-      return {
-        'totalProducts': 0,
-        'lowStockAlerts': 0,
         'totalSales': 0,
         'totalOrders': 0,
         'totalRevenue': 0.0,
         'pendingOrders': 0,
         'notifications': 0,
       };
+    } catch (e) {
+      debugPrint("Error fetching metrics: $e");
+      return _emptyMetrics();
     }
   }
+
+  Map<String, dynamic> _emptyMetrics() => {
+    'totalProducts': 0,
+    'lowStockAlerts': 0,
+    'totalSales': 0,
+    'totalOrders': 0,
+    'totalRevenue': 0.0,
+    'pendingOrders': 0,
+    'notifications': 0,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -190,37 +175,7 @@ class _VendorHomeState extends State<VendorHome> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            GestureDetector(
-              onTap: () async {
-                showDialog(
-                  context: context,
-                  barrierDismissible: false,
-                  builder: (context) =>
-                      const Center(child: CircularProgressIndicator()),
-                );
-
-                try {
-                  final authService = AuthService();
-                  final profile = await authService.getVendorProfile();
-
-                  if (context.mounted) Navigator.pop(context);
-
-                  if (profile != null && context.mounted) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            VendorProfileView(profile: profile),
-                      ),
-                    );
-                  }
-                } catch (e) {
-                  if (context.mounted) Navigator.pop(context);
-                  debugPrint("Navigation error: $e");
-                }
-              },
-              child: const VendorProfileCard(),
-            ),
+            const VendorProfileCard(),
             const SizedBox(height: 24),
             Text(
               "Overview",
@@ -235,73 +190,101 @@ class _VendorHomeState extends State<VendorHome> {
               key: _refreshKey,
               future: getSalesMetrics(),
               builder: (context, snapshot) {
-                // Show a small loader inside the card area while loading
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 20),
+                    padding: EdgeInsets.symmetric(vertical: 40),
                     child: Center(
                       child: CircularProgressIndicator(strokeWidth: 2),
                     ),
                   );
                 }
 
-                final data =
-                    snapshot.data ??
-                    {
-                      'totalProducts': 0,
-                      'lowStockAlerts': 0,
-                      'totalSales': 0,
-                      'totalOrders': 0,
-                      'totalRevenue': 0.0,
-                      'pendingOrders': 0,
-                      'notifications': 0,
-                    };
+                final data = snapshot.data ?? _emptyMetrics();
 
-                return Row(
+                return Column(
                   children: [
-                    Expanded(
-                      child: InkWell(
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => SalesListPage(metrics: data),
+                    // ROW 1: Sales & Inventory
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildStatCard(
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    SalesListPage(metrics: data),
+                              ),
+                            ),
+                            title: "Sales Info",
+                            accentColor: Colors.blue.shade700,
+                            icon: Icons.insights,
+                            items: [
+                              _statRow("Total Sales", "${data['totalSales']}"),
+                              _statRow("Revenue", "₹${data['totalRevenue']}"),
+                            ],
                           ),
                         ),
-                        child: _buildStatCard(
-                          title: "Sales Info",
-                          accentColor: Colors.blue.shade700,
-                          icon: Icons.insights,
-                          items: [
-                            _statRow("Total Sales", "${data['totalSales']}"),
-                            _statRow("Sales Details", "View All"),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    // Inside VendorHome's build method
-                    Expanded(
-                      child: InkWell(
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const ProductListPage(),
-                          ), // New View Page
-                        ),
-                        child: _buildStatCard(
-                          title: "Product Info",
-                          accentColor: Colors.red.shade700,
-                          icon: Icons.inventory_2_outlined,
-                          items: [
-                            _statRow(
-                              "Low Stock",
-                              "${data['lowStockAlerts']} Items",
-                              isAlert: (data['lowStockAlerts'] ?? 0) > 0,
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: _buildStatCard(
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const ProductListPage(),
+                              ),
                             ),
-                            _statRow("Inventory", "View All"),
-                          ],
+                            title: "Product Info",
+                            accentColor: Colors.orange.shade800,
+                            icon: Icons.inventory_2_outlined,
+                            items: [
+                              _statRow(
+                                "Low Stock",
+                                "${data['lowStockAlerts']} Items",
+                                isAlert: data['lowStockAlerts'] > 0,
+                              ),
+                              _statRow("Inventory", "View All"),
+                            ],
+                          ),
                         ),
-                      ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    // ROW 2: Orders & Notifications
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildStatCard(
+                            onTap: () {
+                              /* Future Orders Page */
+                            },
+                            title: "Orders",
+                            accentColor: Colors.purple.shade700,
+                            icon: Icons.local_shipping_outlined,
+                            items: [
+                              _statRow("Pending", "${data['pendingOrders']}"),
+                              _statRow("History", "View Orders"),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: _buildStatCard(
+                            onTap: () {
+                              /* Future Notifications Page */
+                            },
+                            title: "Alerts",
+                            accentColor: Colors.teal.shade700,
+                            icon: Icons.notifications_active_outlined,
+                            items: [
+                              _statRow("Requests", "Approve/Reject"),
+                              _statRow(
+                                "Updates",
+                                "${data['notifications']} New",
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 );
@@ -318,36 +301,41 @@ class _VendorHomeState extends State<VendorHome> {
     required Color accentColor,
     required IconData icon,
     required List<Widget> items,
+    VoidCallback? onTap, // Added interactivity
   }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: accentColor, size: 22),
-          const SizedBox(height: 12),
-          Text(
-            title,
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 13,
-              color: Colors.blueGrey,
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
             ),
-          ),
-          const Divider(height: 20),
-          ...items,
-        ],
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: accentColor, size: 22),
+            const SizedBox(height: 12),
+            Text(
+              title,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+                color: Colors.blueGrey,
+              ),
+            ),
+            const Divider(height: 20),
+            ...items,
+          ],
+        ),
       ),
     );
   }
@@ -371,11 +359,6 @@ class _VendorHomeState extends State<VendorHome> {
       ),
     );
   }
-}
-
-class FetchOptions {
-  const FetchOptions({required this.count});
-  final CountOption count;
 }
 
 class VendorProfileCard extends StatelessWidget {

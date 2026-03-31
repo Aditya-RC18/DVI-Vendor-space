@@ -293,8 +293,9 @@ class _ProductListPageState extends State<ProductListPage> {
                                       ),
                                     ),
                                   );
-                                  if (result == true && mounted)
+                                  if (result == true && mounted) {
                                     setState(() {});
+                                  }
                                 },
                                 icon: const Icon(Icons.edit, size: 18),
                                 label: const Text("Edit"),

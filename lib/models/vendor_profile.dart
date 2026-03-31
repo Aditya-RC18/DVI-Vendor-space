@@ -164,5 +164,5 @@ class VendorProfile {
   bool get canManageVendorServices =>
       role == 'vendor_distributor' || role == 'venue_vendor_distributor';
 
-  get profileImageUrl => null;
+  Null get profileImageUrl => null;
 }
