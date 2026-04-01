@@ -32,6 +32,13 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff0c1c2c)),
         useMaterial3: true,
         fontFamily: GoogleFonts.urbanist().fontFamily,
+        fontFamilyFallback: [
+          'Noto Sans Symbols',
+          'Noto Color Emoji',
+          'Apple Color Emoji',
+          'Segoe UI Emoji',
+          'Roboto',
+        ],
       ),
       initialRoute: '/',
       routes: {

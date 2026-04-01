@@ -5,11 +5,9 @@ import 'package:country_picker/country_picker.dart';
 import '../models/vendor_profile.dart';
 import '../utils/validators.dart';
 import 'edit_business_details_page.dart';
+import 'dart:io';
+import 'package:image_picker/image_picker.dart';
 
-/// Edit Application page — lets the vendor update their application details.
-/// Locked fields (read-only): email, personal phone, date of birth, account type.
-/// Editable fields: full name, business name, address, city, state, pincode,
-///                  business contacts.
 class EditVendorProfilePage extends StatefulWidget {
   final VendorProfile profile;
   const EditVendorProfilePage({super.key, required this.profile});
@@ -22,7 +20,7 @@ class _EditVendorProfilePageState extends State<EditVendorProfilePage> {
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
 
-  // ── Editable ─────────────────────────────────────────────────────────────
+  // ── Editable Controllers ──────────────────────────────────────────────────
   late TextEditingController _nameController;
   late TextEditingController _businessNameController;
   late TextEditingController _addressController;
@@ -38,6 +36,10 @@ class _EditVendorProfilePageState extends State<EditVendorProfilePage> {
   static const _amber = Color(0xFFFFC107);
   static const _amberIcon = Color(0xB3FFC107);
 
+  // ── Image Selection State ─────────────────────────────────────────────────
+  File? _selectedImage;
+  final ImagePicker _picker = ImagePicker();
+
   @override
   void initState() {
     super.initState();
@@ -49,7 +51,6 @@ class _EditVendorProfilePageState extends State<EditVendorProfilePage> {
     _stateController = TextEditingController(text: p.state);
     _pincodeController = TextEditingController(text: p.pincode);
 
-    // Restore saved business contacts
     for (final raw in p.businessContacts) {
       final ec = _EditContact();
       if (raw.startsWith('+')) {
@@ -82,7 +83,50 @@ class _EditVendorProfilePageState extends State<EditVendorProfilePage> {
     super.dispose();
   }
 
-  // ── Submit ────────────────────────────────────────────────────────────────
+  // ── Image Logic ───────────────────────────────────────────────────────────
+  Future<void> _pickImage() async {
+    final XFile? image = await _picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 70,
+    );
+
+    if (image != null) {
+      setState(() {
+        _selectedImage = File(image.path);
+      });
+    }
+  }
+
+  Future<String?> _uploadProfileImage(String vendorId) async {
+    if (_selectedImage == null) return null;
+
+    try {
+      final fileName = '$vendorId/profile_pic.jpg';
+      final storage = Supabase.instance.client.storage.from('vendor_assets');
+
+      await storage.upload(
+        fileName,
+        _selectedImage!,
+        fileOptions: const FileOptions(upsert: true),
+      );
+
+      return storage.getPublicUrl(fileName);
+    } catch (e) {
+      debugPrint("Upload Error: $e");
+      if (e.toString().contains('Bucket not found')) {
+        throw Exception(
+          'Storage bucket not found. Please check your Supabase storage configuration.',
+        );
+      } else if (e.toString().contains('permission')) {
+        throw Exception(
+          'Permission denied. Please check your storage bucket policies.',
+        );
+      }
+      throw Exception('Failed to upload profile image: $e');
+    }
+  }
+
+  // ── Submit Logic ──────────────────────────────────────────────────────────
   Future<void> _updateProfile() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
@@ -90,31 +134,43 @@ class _EditVendorProfilePageState extends State<EditVendorProfilePage> {
     try {
       final uid = Supabase.instance.client.auth.currentUser!.id;
 
+      // Upload image first if a new one was selected
+      String? imageUrl;
+      if (_selectedImage != null) {
+        imageUrl = await _uploadProfileImage(uid);
+      }
+
       final contacts = _businessContacts
           .where((c) => c.controller.text.trim().isNotEmpty)
           .map((c) => '+${c.countryCode} ${c.controller.text.trim()}')
           .toList();
 
+      final Map<String, dynamic> updateData = {
+        'full_name': _nameController.text.trim(),
+        'business_name': _businessNameController.text.trim(),
+        'address': _addressController.text.trim(),
+        'city': _cityController.text.trim(),
+        'state': _stateController.text.trim(),
+        'pincode': _pincodeController.text.trim(),
+        'business_contacts': contacts,
+        'business_submitted': true,
+      };
+
+      if (imageUrl != null) {
+        updateData['profile_image_url'] = imageUrl;
+      }
+
+      if (widget.profile.verificationStatus != 'rejected') {
+        updateData['verification_status'] = widget.profile.verificationStatus;
+      }
+
       await Supabase.instance.client
           .from('vendors')
-          .update({
-            'full_name': _nameController.text.trim(),
-            'business_name': _businessNameController.text.trim(),
-            'address': _addressController.text.trim(),
-            'city': _cityController.text.trim(),
-            'state': _stateController.text.trim(),
-            'pincode': _pincodeController.text.trim(),
-            'business_contacts': contacts,
-            // Only set pending for non-rejected (rejected goes through page 2 first)
-            if (widget.profile.verificationStatus != 'rejected')
-              'verification_status': widget.profile.verificationStatus,
-            'business_submitted': true,
-          })
+          .update(updateData)
           .eq('id', uid);
 
       if (mounted) {
         if (widget.profile.verificationStatus == 'rejected') {
-          // Navigate to page 2 — business details
           final updatedProfile = widget.profile.copyWith(
             fullName: _nameController.text.trim(),
             businessName: _businessNameController.text.trim(),
@@ -123,6 +179,7 @@ class _EditVendorProfilePageState extends State<EditVendorProfilePage> {
             state: _stateController.text.trim(),
             pincode: _pincodeController.text.trim(),
             businessContacts: contacts,
+            profileImageUrl: imageUrl ?? widget.profile.profileImageUrl,
           );
           Navigator.push(
             context,
@@ -174,7 +231,52 @@ class _EditVendorProfilePageState extends State<EditVendorProfilePage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Step indicator (only for rejected vendors)
+                  // --- PROFILE PHOTO SECTION ---
+                  Center(
+                    child: Stack(
+                      children: [
+                        CircleAvatar(
+                          radius: 60,
+                          backgroundColor: Colors.white.withOpacity(0.1),
+                          backgroundImage: _selectedImage != null
+                              ? FileImage(_selectedImage!)
+                              : (widget.profile.profileImageUrl != null
+                                        ? NetworkImage(
+                                            widget.profile.profileImageUrl!,
+                                          )
+                                        : null)
+                                    as ImageProvider?,
+                          child:
+                              (_selectedImage == null &&
+                                  widget.profile.profileImageUrl == null)
+                              ? Icon(
+                                  Icons.person_outline,
+                                  size: 60,
+                                  color: Colors.grey[600],
+                                )
+                              : null,
+                        ),
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: CircleAvatar(
+                            backgroundColor: _amber,
+                            radius: 18,
+                            child: IconButton(
+                              icon: const Icon(
+                                Icons.camera_alt,
+                                size: 18,
+                                color: Colors.black,
+                              ),
+                              onPressed: _pickImage,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+
                   if (widget.profile.verificationStatus == 'rejected') ...[
                     _buildStepIndicator(),
                     const SizedBox(height: 20),
@@ -184,11 +286,9 @@ class _EditVendorProfilePageState extends State<EditVendorProfilePage> {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.amber.withValues(alpha: 0.08),
+                      color: Colors.amber.withOpacity(0.08),
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: Colors.amber.withValues(alpha: 0.3),
-                      ),
+                      border: Border.all(color: Colors.amber.withOpacity(0.3)),
                     ),
                     child: const Row(
                       children: [
@@ -206,7 +306,7 @@ class _EditVendorProfilePageState extends State<EditVendorProfilePage> {
                   ),
                   const SizedBox(height: 32),
 
-                  // ── READ-ONLY DISPLAY ───────────────────────────────────
+                  // ── READ-ONLY DISPLAY ─────────────────────────────────────
                   _sectionHeader(Icons.lock_outline, 'Locked Fields'),
                   const SizedBox(height: 16),
                   _readOnlyTile(
@@ -234,10 +334,9 @@ class _EditVendorProfilePageState extends State<EditVendorProfilePage> {
                   ),
                   const SizedBox(height: 32),
 
-                  // ── EDITABLE FIELDS ─────────────────────────────────────
+                  // ── EDITABLE FIELDS ───────────────────────────────────────
                   _sectionHeader(Icons.edit_outlined, 'About Yourself'),
                   const SizedBox(height: 16),
-
                   _buildTextField(
                     label: 'Full Name',
                     hint: 'As per ID proof',
@@ -249,17 +348,15 @@ class _EditVendorProfilePageState extends State<EditVendorProfilePage> {
 
                   _sectionHeader(Icons.business_outlined, 'About Business'),
                   const SizedBox(height: 16),
-
                   _buildTextField(
                     label: 'Business Name',
-                    hint: 'Registered business / brand name',
+                    hint: 'Registered brand name',
                     icon: Icons.storefront_outlined,
                     controller: _businessNameController,
                     validator: (v) =>
                         (v == null || v.trim().isEmpty) ? 'Required' : null,
                   ),
                   const SizedBox(height: 16),
-
                   _buildTextField(
                     label: 'Address',
                     hint: 'Street / locality',
@@ -269,7 +366,6 @@ class _EditVendorProfilePageState extends State<EditVendorProfilePage> {
                         (v == null || v.trim().isEmpty) ? 'Required' : null,
                   ),
                   const SizedBox(height: 16),
-
                   _buildTextField(
                     label: 'City',
                     hint: 'City',
@@ -279,7 +375,6 @@ class _EditVendorProfilePageState extends State<EditVendorProfilePage> {
                         (v == null || v.trim().isEmpty) ? 'Required' : null,
                   ),
                   const SizedBox(height: 16),
-
                   Row(
                     children: [
                       Expanded(
@@ -313,7 +408,7 @@ class _EditVendorProfilePageState extends State<EditVendorProfilePage> {
                   ),
                   const SizedBox(height: 24),
 
-                  // ── Business contacts ───────────────────────────────────
+                  // ── Business contacts ─────────────────────────────────────
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -323,20 +418,9 @@ class _EditVendorProfilePageState extends State<EditVendorProfilePage> {
                           () => _businessContacts.add(_EditContact()),
                         ),
                         icon: const Icon(Icons.add_circle, color: _amber),
-                        tooltip: 'Add contact',
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
                       ),
                     ],
                   ),
-                  if (_businessContacts.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        'No business contacts added.',
-                        style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                      ),
-                    ),
                   for (int i = 0; i < _businessContacts.length; i++) ...[
                     const SizedBox(height: 10),
                     _buildContactRow(_businessContacts[i], i),
@@ -363,10 +447,6 @@ class _EditVendorProfilePageState extends State<EditVendorProfilePage> {
                       widget.profile.verificationStatus == 'rejected'
                           ? 'Save & Continue →'
                           : 'Save Changes',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
                     ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _amber,
@@ -394,7 +474,7 @@ class _EditVendorProfilePageState extends State<EditVendorProfilePage> {
     );
   }
 
-  // ── Step indicator (rejected resubmission flow) ──────────────────────────
+  // ── Helper Widgets ────────────────────────────────────────────────────────
   Widget _buildStepIndicator() {
     return Row(
       children: [
@@ -421,7 +501,7 @@ class _EditVendorProfilePageState extends State<EditVendorProfilePage> {
             color: done
                 ? _amber
                 : (active
-                      ? Colors.amber.withValues(alpha: 0.15)
+                      ? Colors.amber.withOpacity(0.15)
                       : Colors.transparent),
             shape: BoxShape.circle,
             border: Border.all(color: color, width: 1.5),
@@ -440,19 +520,10 @@ class _EditVendorProfilePageState extends State<EditVendorProfilePage> {
           ),
         ),
         const SizedBox(width: 6),
-        Text(
-          label,
-          style: TextStyle(
-            color: color,
-            fontSize: 12,
-            fontWeight: active ? FontWeight.w600 : FontWeight.normal,
-          ),
-        ),
+        Text(label, style: TextStyle(color: color, fontSize: 12)),
       ],
     );
   }
-
-  // ── Widgets ───────────────────────────────────────────────────────────────
 
   Widget _sectionHeader(IconData icon, String text) => Row(
     children: [
@@ -464,7 +535,6 @@ class _EditVendorProfilePageState extends State<EditVendorProfilePage> {
           color: _amber,
           fontWeight: FontWeight.w700,
           fontSize: 14,
-          letterSpacing: 0.5,
         ),
       ),
     ],
@@ -473,9 +543,9 @@ class _EditVendorProfilePageState extends State<EditVendorProfilePage> {
   Widget _readOnlyTile(IconData icon, String label, String value) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
     decoration: BoxDecoration(
-      color: Colors.white.withValues(alpha: 0.03),
+      color: Colors.white.withOpacity(0.03),
       borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      border: Border.all(color: Colors.white.withOpacity(0.08)),
     ),
     child: Row(
       children: [
@@ -489,7 +559,6 @@ class _EditVendorProfilePageState extends State<EditVendorProfilePage> {
                 label,
                 style: TextStyle(color: Colors.grey[600], fontSize: 11),
               ),
-              const SizedBox(height: 2),
               Text(
                 value,
                 style: const TextStyle(color: Colors.white54, fontSize: 15),
@@ -502,10 +571,8 @@ class _EditVendorProfilePageState extends State<EditVendorProfilePage> {
     ),
   );
 
-  Widget _label(String text) => Text(
-    text,
-    style: TextStyle(color: Colors.grey[300], fontWeight: FontWeight.w500),
-  );
+  Widget _label(String text) =>
+      Text(text, style: TextStyle(color: Colors.grey[300]));
 
   Widget _buildTextField({
     required String label,
@@ -551,54 +618,31 @@ class _EditVendorProfilePageState extends State<EditVendorProfilePage> {
 
   Widget _buildContactRow(_EditContact contact, int index) {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Mobile / telephone toggle
         GestureDetector(
           onTap: () => setState(() => contact.isMobile = !contact.isMobile),
-          child: Tooltip(
-            message: contact.isMobile ? 'Mobile' : 'Telephone',
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 16),
-              decoration: BoxDecoration(
-                color: _fieldBg,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: _fieldBorder),
-              ),
-              child: Icon(
-                contact.isMobile ? Icons.phone_android : Icons.phone_outlined,
-                color: _amber,
-                size: 20,
-              ),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: _fieldBg,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: _fieldBorder),
+            ),
+            child: Icon(
+              contact.isMobile ? Icons.phone_android : Icons.phone_outlined,
+              color: _amber,
+              size: 20,
             ),
           ),
         ),
         const SizedBox(width: 8),
-        // Country code
         GestureDetector(
           onTap: () => showCountryPicker(
             context: context,
-            showPhoneCode: true,
             onSelect: (c) => setState(() => contact.countryCode = c.phoneCode),
-            countryListTheme: CountryListThemeData(
-              bottomSheetHeight: 500,
-              backgroundColor: const Color(0xFF121212),
-              textStyle: const TextStyle(color: Colors.white),
-              searchTextStyle: const TextStyle(color: Colors.white),
-              inputDecoration: InputDecoration(
-                hintStyle: TextStyle(color: Colors.grey[500]),
-                prefixIcon: const Icon(Icons.search, color: Colors.grey),
-                filled: true,
-                fillColor: Colors.white.withValues(alpha: 0.1),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-              ),
-            ),
           ),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 16),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: _fieldBg,
               borderRadius: BorderRadius.circular(12),
@@ -606,12 +650,11 @@ class _EditVendorProfilePageState extends State<EditVendorProfilePage> {
             ),
             child: Text(
               '+${contact.countryCode}',
-              style: const TextStyle(color: Colors.white, fontSize: 15),
+              style: const TextStyle(color: Colors.white),
             ),
           ),
         ),
         const SizedBox(width: 8),
-        // Number field
         Expanded(
           child: Container(
             decoration: BoxDecoration(
@@ -624,7 +667,7 @@ class _EditVendorProfilePageState extends State<EditVendorProfilePage> {
               keyboardType: TextInputType.phone,
               style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
-                hintText: contact.isMobile ? '9876543210' : '022-12345678',
+                hintText: contact.isMobile ? '9876543210' : 'Number',
                 hintStyle: TextStyle(color: Colors.grey[500]),
                 border: InputBorder.none,
                 prefixIcon: Icon(
@@ -638,38 +681,20 @@ class _EditVendorProfilePageState extends State<EditVendorProfilePage> {
                   vertical: 16,
                 ),
               ),
-              validator: (v) {
-                if (v == null || v.trim().isEmpty) {
-                  return 'Enter a number or remove this row';
-                }
-                final stripped = v.trim().replaceAll(RegExp(r'[\s]'), '');
-                if (contact.isMobile) {
-                  if (!RegExp(r'^\d{10}$').hasMatch(stripped)) {
-                    return 'Enter exactly 10 digits';
-                  }
-                } else {
-                  if (!RegExp(r'^[\d\-]{5,15}$').hasMatch(stripped)) {
-                    return 'Digits and hyphens only';
-                  }
-                }
-                return null;
-              },
+              validator: (v) =>
+                  (v == null || v.trim().isEmpty) ? 'Required' : null,
             ),
           ),
         ),
-        const SizedBox(width: 4),
         IconButton(
           onPressed: () => setState(() => _businessContacts.removeAt(index)),
           icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
-          padding: const EdgeInsets.only(top: 8),
-          constraints: const BoxConstraints(),
         ),
       ],
     );
   }
 }
 
-// ── Role display helper ───────────────────────────────────────────────────────
 String _roleLabel(String role) {
   switch (role) {
     case 'venue_distributor':
@@ -685,7 +710,6 @@ String _roleLabel(String role) {
   }
 }
 
-// ── Data class ────────────────────────────────────────────────────────────────
 class _EditContact {
   final TextEditingController controller = TextEditingController();
   bool isMobile = true;

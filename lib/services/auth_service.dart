@@ -57,6 +57,25 @@ class AuthService {
     }
   }
 
+  Future<Map<String, int>> getProductMetrics() async {
+    final userId = Supabase.instance.client.auth.currentUser!.id;
+
+    // Fetch total products count
+    final productCount = await Supabase.instance.client
+        .from('products')
+        .select('id')
+        .eq('vendor_id', userId);
+
+    // Fetch low stock count (where quantity < 5)
+    final lowStockCount = await Supabase.instance.client
+        .from('products')
+        .select('id')
+        .eq('vendor_id', userId)
+        .lt('quantity', 5);
+
+    return {'total': productCount.length, 'lowStock': lowStockCount.length};
+  }
+
   Future<bool> signInWithGoogle() async {
     try {
       return await _supabase.auth.signInWithOAuth(

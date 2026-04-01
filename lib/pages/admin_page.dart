@@ -129,7 +129,10 @@ class _AdminPageState extends State<AdminPage>
       setState(() {
         final index = _allVendors.indexWhere((v) => v.id == vendorId);
         if (index != -1) {
-          _allVendors[index] = _allVendors[index].copyWith(role: newRole);
+          _allVendors[index] = _allVendors[index].copyWith(
+            role: newRole,
+            profileImageUrl: null,
+          );
         }
       });
       if (mounted) {
