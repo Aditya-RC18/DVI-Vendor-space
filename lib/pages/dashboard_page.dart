@@ -2,13 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 // Ensure these paths match your project structure exactly
-import 'product_details_page.dart';
 import 'sales_list_page.dart';
 import 'vendor_profile_view.dart';
 import 'report_issue_page.dart';
 import '../services/auth_service.dart';
 import '../utils/constants.dart';
 import '../models/order.dart';
+import 'product_details_page.dart';
+import 'orders_page.dart';
+import 'alerts_page.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -117,7 +119,6 @@ class VendorHome extends StatefulWidget {
 
 class _VendorHomeState extends State<VendorHome> {
   Key _refreshKey = UniqueKey();
-  Set<String> _dismissedOrderIds = {};
 
   Future<Map<String, dynamic>> getSalesMetrics() async {
     final supabase = Supabase.instance.client;
@@ -158,21 +159,29 @@ class _VendorHomeState extends State<VendorHome> {
         totalSales = orders.fold(0, (sum, o) => sum + o.quantity);
         totalRevenue = orders.fold(0.0, (sum, o) => sum + o.totalPrice);
         totalOrders = orders.length;
-        pendingOrders = orders.where((o) => o.status == 'pending').length;
+        
+        // Active orders: accepted, pending, shipped
+        pendingOrders = orders.where((o) => 
+          ['accepted', 'pending', 'shipped'].contains(o.status.toLowerCase())
+        ).length;
+        
+        // Notifications: count of 'request' status orders
+        int requestsCount = orders.where((o) => o.status.toLowerCase() == 'request').length;
+
+        return {
+          'totalProducts': allProducts.length,
+          'lowStockAlerts': lowStockProducts.length,
+          'totalSales': totalSales,
+          'totalOrders': totalOrders,
+          'totalRevenue': totalRevenue,
+          'pendingOrders': pendingOrders,
+          'notifications': requestsCount,
+          'orders': orders,
+        };
       } catch (e) {
         debugPrint("Error fetching orders: $e");
       }
-
-      return {
-        'totalProducts': allProducts.length,
-        'lowStockAlerts': lowStockProducts.length,
-        'totalSales': totalSales,
-        'totalOrders': totalOrders,
-        'totalRevenue': totalRevenue,
-        'pendingOrders': pendingOrders,
-        'notifications': 0,
-        'orders': orders,
-      };
+      return _emptyMetrics();
     } catch (e) {
       debugPrint("Error fetching metrics: $e");
       return _emptyMetrics();
@@ -236,11 +245,20 @@ class _VendorHomeState extends State<VendorHome> {
                     Row(
                       children: [
                         Expanded(
-                          child: _buildInteractiveSalesCard(
-                            context: context,
-                            data: data,
-                            onTotalSalesTap: () => _showSalesAnalyticsModal(context, data),
-                            onTotalOrdersTap: () => _showOrdersAnalyticsModal(context, data),
+                          child: _buildStatCard(
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => SalesListPage(metrics: data),
+                              ),
+                            ),
+                            title: "Sales Info",
+                            accentColor: Colors.blue.shade700,
+                            icon: Icons.insights,
+                            items: [
+                              _statRow("Total Sales", "${data['totalSales'] ?? 0}"),
+                              _statRow("Total Orders", "${data['totalOrders'] ?? 0}"),
+                            ],
                           ),
                         ),
                         const SizedBox(width: 16),
@@ -273,32 +291,35 @@ class _VendorHomeState extends State<VendorHome> {
                       children: [
                         Expanded(
                           child: _buildStatCard(
-                            onTap: () {
-                              /* Future Orders Page */
-                            },
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (context) => const OrdersPage()),
+                            ),
                             title: "Orders",
                             accentColor: Colors.purple.shade700,
                             icon: Icons.local_shipping_outlined,
                             items: [
-                              _statRow("Pending", "${data['pendingOrders']}"),
-                              _statRow("History", "View Orders"),
+                              _statRow("Active", "${data['pendingOrders']}"),
+                              _statRow("History", "View Log"),
                             ],
                           ),
                         ),
                         const SizedBox(width: 16),
                         Expanded(
                           child: _buildStatCard(
-                            onTap: () {
-                              /* Future Notifications Page */
-                            },
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (context) => const AlertsPage()),
+                            ),
                             title: "Alerts",
                             accentColor: Colors.teal.shade700,
                             icon: Icons.notifications_active_outlined,
                             items: [
                               _statRow("Requests", "Approve/Reject"),
                               _statRow(
-                                "Updates",
-                                "${data['notifications']} New",
+                                "New",
+                                "${data['notifications']}",
+                                isAlert: (data['notifications'] ?? 0) > 0,
                               ),
                             ],
                           ),
@@ -379,417 +400,6 @@ class _VendorHomeState extends State<VendorHome> {
     );
   }
 
-  Widget _buildInteractiveSalesCard({
-    required BuildContext context,
-    required Map<String, dynamic> data,
-    required VoidCallback onTotalSalesTap,
-    required VoidCallback onTotalOrdersTap,
-  }) {
-    final orders = (data['orders'] ?? []) as List<Order>;
-    final visibleOrders = orders.where((o) => !_dismissedOrderIds.contains(o.id)).toList();
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.insights, color: Colors.blue.shade700, size: 22),
-              const SizedBox(width: 8),
-              Text(
-                "Sales Info",
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
-                  color: Colors.blueGrey,
-                ),
-              ),
-            ],
-          ),
-          const Divider(height: 20),
-          // Total Sales Button
-          GestureDetector(
-            onTap: onTotalSalesTap,
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-              decoration: BoxDecoration(
-                border: Border(bottom: BorderSide(color: Colors.blue.shade200, width: 2)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    "Total Sales",
-                    style: const TextStyle(fontSize: 10, color: Colors.grey),
-                  ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        "${data['totalSales'] ?? 0}",
-                        style: GoogleFonts.urbanist(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: const Color(0xff0c1c2c),
-                        ),
-                      ),
-                      Icon(Icons.arrow_forward, size: 14, color: Colors.blue.shade700),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          // Total Orders Button
-          GestureDetector(
-            onTap: onTotalOrdersTap,
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-              decoration: BoxDecoration(
-                border: Border(bottom: BorderSide(color: Colors.blue.shade200, width: 2)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    "Total Orders",
-                    style: const TextStyle(fontSize: 10, color: Colors.grey),
-                  ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        "${data['totalOrders'] ?? 0}",
-                        style: GoogleFonts.urbanist(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: const Color(0xff0c1c2c),
-                        ),
-                      ),
-                      Icon(Icons.arrow_forward, size: 14, color: Colors.blue.shade700),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          // Recent Orders Notifications
-          Text(
-            "Recent Orders",
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-              color: Colors.blueGrey,
-            ),
-          ),
-          const SizedBox(height: 8),
-          if (visibleOrders.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Text(
-                "No recent orders",
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-              ),
-            )
-          else
-            Column(
-              children: visibleOrders.take(3).map((order) {
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.shade50,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.blue.shade200),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                order.customerName,
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              Text(
-                                "${order.productName} (Qty: ${order.quantity})",
-                                style: const TextStyle(fontSize: 9, color: Colors.grey),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              Text(
-                                "From: ${order.region}",
-                                style: const TextStyle(fontSize: 9, color: Colors.grey),
-                              ),
-                            ],
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.close, size: 16),
-                          onPressed: () {
-                            setState(() {
-                              _dismissedOrderIds.add(order.id);
-                            });
-                          },
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-        ],
-      ),
-    );
-  }
-
-  void _showSalesAnalyticsModal(BuildContext context, Map<String, dynamic> data) {
-    final orders = (data['orders'] ?? []) as List<Order>;
-    
-    Map<String, int> regionWiseSales = {};
-    Map<String, int> productWiseSales = {};
-    
-    for (var order in orders) {
-      regionWiseSales[order.region] = (regionWiseSales[order.region] ?? 0) + order.quantity;
-      productWiseSales[order.productName] = (productWiseSales[order.productName] ?? 0) + order.quantity;
-    }
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Sales Analytics"),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 8),
-                Text(
-                  "Region-wise Sales",
-                  style: GoogleFonts.urbanist(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                if (regionWiseSales.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 8),
-                    child: Text("No sales data available"),
-                  )
-                else
-                  Container(
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey.shade300),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: DataTable(
-                      columns: const [
-                        DataColumn(label: Text("Region")),
-                        DataColumn(label: Text("Qty Sold")),
-                      ],
-                      rows: regionWiseSales.entries.map((e) {
-                        return DataRow(cells: [
-                          DataCell(Text(e.key)),
-                          DataCell(Text("${e.value}")),
-                        ]);
-                      }).toList(),
-                    ),
-                  ),
-                const SizedBox(height: 16),
-                Text(
-                  "Product-wise Sales",
-                  style: GoogleFonts.urbanist(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                if (productWiseSales.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 8),
-                    child: Text("No sales data available"),
-                  )
-                else
-                  Container(
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey.shade300),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: DataTable(
-                      columns: const [
-                        DataColumn(label: Text("Product")),
-                        DataColumn(label: Text("Qty Sold")),
-                      ],
-                      rows: productWiseSales.entries.map((e) {
-                        return DataRow(cells: [
-                          DataCell(Text(e.key, overflow: TextOverflow.ellipsis)),
-                          DataCell(Text("${e.value}")),
-                        ]);
-                      }).toList(),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Close"),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showOrdersAnalyticsModal(BuildContext context, Map<String, dynamic> data) {
-    final orders = (data['orders'] ?? []) as List<Order>;
-    String selectedPeriod = 'all';
-    
-    Map<String, int> getOrdersByPeriod(String period) {
-      Map<String, int> periodOrders = {};
-      
-      for (var order in orders) {
-        String key;
-        if (period == 'monthly') {
-          key = "${order.createdAt.year}-${order.createdAt.month.toString().padLeft(2, '0')}";
-        } else if (period == 'yearly') {
-          key = "${order.createdAt.year}";
-        } else {
-          key = order.productName;
-        }
-        periodOrders[key] = (periodOrders[key] ?? 0) + order.quantity;
-      }
-      
-      return periodOrders;
-    }
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) {
-          final orderData = getOrdersByPeriod(selectedPeriod);
-          
-          return AlertDialog(
-            title: const Text("Orders Analytics"),
-            content: SizedBox(
-              width: double.maxFinite,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 8),
-                    Text(
-                      "View by:",
-                      style: GoogleFonts.urbanist(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: SegmentedButton<String>(
-                            segments: const [
-                              ButtonSegment(label: Text("Product"), value: 'all'),
-                              ButtonSegment(label: Text("Month"), value: 'monthly'),
-                              ButtonSegment(label: Text("Year"), value: 'yearly'),
-                            ],
-                            selected: {selectedPeriod},
-                            onSelectionChanged: (value) {
-                              setState(() {
-                                selectedPeriod = value.first;
-                              });
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    if (orderData.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 16),
-                        child: Text("No orders data available"),
-                      )
-                    else
-                      Container(
-                        decoration: BoxDecoration(
-                          border: Border.all(color: Colors.grey.shade300),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: DataTable(
-                          columns: [
-                            DataColumn(
-                              label: Text(selectedPeriod == 'all' ? "Product" : selectedPeriod == 'monthly' ? "Month" : "Year"),
-                            ),
-                            const DataColumn(label: Text("Qty Sold")),
-                            const DataColumn(label: Text("Revenue")),
-                          ],
-                          rows: orderData.entries.map((e) {
-                            double revenue = orders
-                                .where((o) {
-                                  if (selectedPeriod == 'monthly') {
-                                    String key = "${o.createdAt.year}-${o.createdAt.month.toString().padLeft(2, '0')}";
-                                    return key == e.key;
-                                  } else if (selectedPeriod == 'yearly') {
-                                    return "${o.createdAt.year}" == e.key;
-                                  } else {
-                                    return o.productName == e.key;
-                                  }
-                                })
-                                .fold(0.0, (sum, o) => sum + o.totalPrice);
-                            
-                            return DataRow(cells: [
-                              DataCell(Text(e.key, overflow: TextOverflow.ellipsis)),
-                              DataCell(Text("${e.value}")),
-                              DataCell(Text("₹${revenue.toStringAsFixed(2)}")),
-                            ]);
-                          }).toList(),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text("Close"),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
 }
 
 class VendorProfileCard extends StatelessWidget {

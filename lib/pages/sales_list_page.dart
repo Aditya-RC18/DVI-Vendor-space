@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../models/order.dart';
 
 class SalesListPage extends StatefulWidget {
   final Map<String, dynamic>? metrics;
@@ -10,125 +12,207 @@ class SalesListPage extends StatefulWidget {
 }
 
 class _SalesListPageState extends State<SalesListPage> {
-  late List<Map<String, dynamic>> recentOrders;
+  final _supabase = Supabase.instance.client;
+  List<Order> _allOrders = [];
+  final Set<String> _dismissedOrderIds = {};
+  bool _isLoading = true;
+  Map<String, dynamic> _currentMetrics = {};
 
   @override
   void initState() {
     super.initState();
-    // Initialize recent orders with dismissible state
-    recentOrders = [
-      {'id': 1001, 'customer': 'John Doe', 'region': 'North', 'product': 'Laptop', 'dismissed': false},
-      {'id': 1002, 'customer': 'Jane Smith', 'region': 'South', 'product': 'Mouse Pad', 'dismissed': false},
-      {'id': 1003, 'customer': 'Bob Wilson', 'region': 'East', 'product': 'Keyboard', 'dismissed': false},
-      {'id': 1004, 'customer': 'Alice Brown', 'region': 'West', 'product': 'Monitor', 'dismissed': false},
-      {'id': 1005, 'customer': 'Charlie Davis', 'region': 'North', 'product': 'Headphones', 'dismissed': false},
-      {'id': 1006, 'customer': 'Emma Wilson', 'region': 'South', 'product': 'USB Cable', 'dismissed': false},
-    ];
+    _currentMetrics = widget.metrics ?? {};
+    _fetchSalesData();
   }
 
-  void _dismissNotification(int index) {
+  Future<void> _fetchSalesData() async {
+    final user = _supabase.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      final ordersData = await _supabase
+          .from('orders')
+          .select()
+          .eq('vendor_id', user.id)
+          .order('created_at', ascending: false);
+
+      final orders = (ordersData as List).map((o) => Order.fromJson(o)).toList();
+      
+      // Re-calculate metrics to ensure they are fresh
+      int totalSales = orders.fold(0, (sum, o) => sum + o.quantity);
+      double totalRevenue = orders.fold(0.0, (sum, o) => sum + o.totalPrice);
+      int pendingOrders = orders.where((o) => o.status == 'pending').length;
+
+      if (mounted) {
+        setState(() {
+          _allOrders = orders;
+          _currentMetrics = {
+            ..._currentMetrics,
+            'totalSales': totalSales,
+            'totalOrders': orders.length,
+            'totalRevenue': totalRevenue,
+            'pendingOrders': pendingOrders,
+          };
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error fetching sales data: $e");
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  void _dismissNotification(String orderId) {
     setState(() {
-      recentOrders[index]['dismissed'] = true;
+      _dismissedOrderIds.add(orderId);
     });
   }
 
   void _showTotalSalesAnalytics() {
+    Map<String, int> regionWiseSales = {};
+    Map<String, int> productWiseSales = {};
+    
+    for (var order in _allOrders) {
+      regionWiseSales[order.region] = (regionWiseSales[order.region] ?? 0) + order.quantity;
+      productWiseSales[order.productName] = (productWiseSales[order.productName] ?? 0) + order.quantity;
+    }
+
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => Container(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Sales Analytics',
-              style: GoogleFonts.urbanist(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        maxChildSize: 0.9,
+        minChildSize: 0.4,
+        expand: false,
+        builder: (context, scrollController) => SingleChildScrollView(
+          controller: scrollController,
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Sales Analytics',
+                style: GoogleFonts.urbanist(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              'By Region',
-              style: GoogleFonts.urbanist(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
+              const Divider(height: 32),
+              Text(
+                'By Region',
+                style: GoogleFonts.urbanist(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.blueGrey,
+                ),
               ),
-            ),
-            const SizedBox(height: 10),
-            _buildAnalyticsRow('North', '₹45,000', Colors.blue),
-            _buildAnalyticsRow('South', '₹38,000', Colors.green),
-            _buildAnalyticsRow('East', '₹52,000', Colors.orange),
-            _buildAnalyticsRow('West', '₹35,000', Colors.purple),
-            const SizedBox(height: 20),
-            Text(
-              'By Product',
-              style: GoogleFonts.urbanist(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
+              const SizedBox(height: 12),
+              ...regionWiseSales.entries.map((e) => _buildAnalyticsRow(
+                e.key, 
+                '${e.value} items', 
+                Colors.blue.shade700
+              )),
+              const SizedBox(height: 24),
+              Text(
+                'By Product',
+                style: GoogleFonts.urbanist(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.blueGrey,
+                ),
               ),
-            ),
-            const SizedBox(height: 10),
-            _buildAnalyticsRow('Laptops', '₹120,000', Colors.red),
-            _buildAnalyticsRow('Peripherals', '₹25,000', Colors.teal),
-            _buildAnalyticsRow('Cables & Accessories', '₹25,000', Colors.indigo),
-          ],
+              const SizedBox(height: 12),
+              ...productWiseSales.entries.map((e) => _buildAnalyticsRow(
+                e.key, 
+                '${e.value} items', 
+                Colors.orange.shade700
+              )),
+            ],
+          ),
         ),
       ),
     );
   }
 
   void _showTotalOrdersAnalytics() {
+    String selectedPeriod = 'monthly';
+    
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => Container(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Orders Analytics',
-              style: GoogleFonts.urbanist(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
+      builder: (_) => StatefulBuilder(
+        builder: (context, setModalState) {
+          Map<String, int> periodOrders = {};
+          for (var order in _allOrders) {
+            String key;
+            if (selectedPeriod == 'monthly') {
+              key = "${order.createdAt.year}-${order.createdAt.month.toString().padLeft(2, '0')}";
+            } else {
+              key = "${order.createdAt.year}";
+            }
+            periodOrders[key] = (periodOrders[key] ?? 0) + order.quantity;
+          }
+
+          return DraggableScrollableSheet(
+            initialChildSize: 0.6,
+            maxChildSize: 0.9,
+            minChildSize: 0.4,
+            expand: false,
+            builder: (context, scrollController) => SingleChildScrollView(
+              controller: scrollController,
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Orders Analytics',
+                        style: GoogleFonts.urbanist(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      SegmentedButton<String>(
+                        segments: const [
+                          ButtonSegment(label: Text("Monthly"), value: 'monthly'),
+                          ButtonSegment(label: Text("Yearly"), value: 'yearly'),
+                        ],
+                        selected: {selectedPeriod},
+                        onSelectionChanged: (value) {
+                          setModalState(() => selectedPeriod = value.first);
+                        },
+                      ),
+                    ],
+                  ),
+                  const Divider(height: 32),
+                  if (periodOrders.isEmpty)
+                    const Center(child: Padding(
+                      padding: EdgeInsets.all(20.0),
+                      child: Text("No orders data available"),
+                    ))
+                  else
+                    ...periodOrders.entries.map((e) => _buildAnalyticsRow(
+                      e.key, 
+                      '${e.value} items sold', 
+                      Colors.purple.shade700
+                    )),
+                ],
               ),
             ),
-            const SizedBox(height: 20),
-            Text(
-              'By Month (2024)',
-              style: GoogleFonts.urbanist(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 10),
-            _buildAnalyticsRow('January', '45 orders', Colors.blue),
-            _buildAnalyticsRow('February', '52 orders', Colors.green),
-            _buildAnalyticsRow('March', '48 orders', Colors.orange),
-            _buildAnalyticsRow('April', '61 orders', Colors.purple),
-            const SizedBox(height: 20),
-            Text(
-              'Product Sales Count',
-              style: GoogleFonts.urbanist(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 10),
-            _buildAnalyticsRow('Laptops', '28 sold', Colors.red),
-            _buildAnalyticsRow('Mice', '15 sold', Colors.teal),
-            _buildAnalyticsRow('Keyboards', '12 sold', Colors.indigo),
-            _buildAnalyticsRow('Monitors', '8 sold', Colors.cyan),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
@@ -152,13 +236,13 @@ class _SalesListPageState extends State<SalesListPage> {
               const SizedBox(width: 12),
               Text(
                 label,
-                style: const TextStyle(fontSize: 14),
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
               ),
             ],
           ),
           Text(
             value,
-            style: const TextStyle(
+            style: GoogleFonts.urbanist(
               fontSize: 14,
               fontWeight: FontWeight.bold,
             ),
@@ -168,44 +252,49 @@ class _SalesListPageState extends State<SalesListPage> {
     );
   }
 
-  Widget statChip(String label, String value, {Color? color, VoidCallback? onTap}) {
+  Widget _buildStatCard({
+    required String title,
+    required Color accentColor,
+    required IconData icon,
+    required List<Widget> items,
+    VoidCallback? onTap,
+  }) {
     return Expanded(
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         child: Container(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.03),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
               ),
             ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Icon(icon, color: accentColor, size: 22),
+              const SizedBox(height: 12),
               Text(
-                label,
-                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                value,
-                style: GoogleFonts.urbanist(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: color ?? const Color(0xff0c1c2c),
+                title,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                  color: Colors.blueGrey,
                 ),
               ),
+              const Divider(height: 20),
+              ...items,
               if (onTap != null) ...[
-                const SizedBox(height: 4),
+                const SizedBox(height: 8),
                 Text(
-                  'Tap for details →',
+                  "Tap for details →",
                   style: TextStyle(
                     fontSize: 10,
                     color: Colors.blue.shade600,
@@ -220,15 +309,41 @@ class _SalesListPageState extends State<SalesListPage> {
     );
   }
 
+  Widget _statRow(String label, String value, {bool isAlert = false}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+          Text(
+            value,
+            style: GoogleFonts.urbanist(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: isAlert ? Colors.red : const Color(0xff0c1c2c),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final data = widget.metrics ?? {};
-    final visibleOrders = recentOrders.where((o) => !o['dismissed']).toList();
+    if (_isLoading) {
+      return Scaffold(
+        appBar: AppBar(backgroundColor: const Color(0xff0c1c2c)),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final visibleOrders = _allOrders.where((o) => !_dismissedOrderIds.contains(o.id)).toList();
 
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          'Sales',
+          'Sales Info',
           style: GoogleFonts.urbanist(
             color: Colors.white,
             fontWeight: FontWeight.bold,
@@ -237,171 +352,172 @@ class _SalesListPageState extends State<SalesListPage> {
         backgroundColor: const Color(0xff0c1c2c),
         iconTheme: const IconThemeData(color: Colors.white),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                statChip(
-                  'Total Sales',
-                  '${data['totalSales'] ?? 0}',
-                  onTap: _showTotalSalesAnalytics,
-                ),
-                const SizedBox(width: 12),
-                statChip(
-                  'Total Orders',
-                  '${data['totalOrders'] ?? 0}',
-                  onTap: _showTotalOrdersAnalytics,
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                statChip(
-                  'Revenue',
-                  '₹${data['totalRevenue'] ?? 0.0}',
-                  color: Colors.green.shade700,
-                ),
-                const SizedBox(width: 12),
-                statChip(
-                  'Pending Orders',
-                  '${data['pendingOrders'] ?? 0}',
-                  color: (data['pendingOrders'] ?? 0) > 0 ? Colors.red : null,
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Low Stock Alerts',
-              style: GoogleFonts.urbanist(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.03),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      body: RefreshIndicator(
+        onRefresh: _fetchSalesData,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // STAT CARDS
+              Row(
                 children: [
-                  Text(
-                    '${data['lowStockAlerts'] ?? 0} items low in stock',
-                    style: const TextStyle(fontSize: 14),
+                  _buildStatCard(
+                    onTap: _showTotalSalesAnalytics,
+                    title: "Total Sales",
+                    accentColor: Colors.blue.shade700,
+                    icon: Icons.payments_outlined,
+                    items: [
+                      _statRow("Qty Sold", "${_currentMetrics['totalSales'] ?? 0}"),
+                      _statRow("Revenue", "₹${_currentMetrics['totalRevenue']?.toStringAsFixed(2) ?? '0.00'}", isAlert: false),
+                    ],
                   ),
-                  ElevatedButton(
-                    onPressed: () => Navigator.pop(context),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xff0c1c2c),
-                    ),
-                    child: const Text('View Products'),
+                  const SizedBox(width: 16),
+                  _buildStatCard(
+                    onTap: _showTotalOrdersAnalytics,
+                    title: "Total Orders",
+                    accentColor: Colors.purple.shade700,
+                    icon: Icons.shopping_bag_outlined,
+                    items: [
+                      _statRow("Orders", "${_currentMetrics['totalOrders'] ?? 0}"),
+                      _statRow(
+                        "Pending", 
+                        "${_currentMetrics['pendingOrders'] ?? 0}",
+                        isAlert: (_currentMetrics['pendingOrders'] ?? 0) > 0,
+                      ),
+                    ],
                   ),
                 ],
               ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Recent Orders (${visibleOrders.length})',
-              style: GoogleFonts.urbanist(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
+              const SizedBox(height: 24),
+              
+              // LOW STOCK SECTION
+              Text(
+                "Inventory Alerts",
+                style: GoogleFonts.urbanist(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: const Color(0xff0c1c2c),
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Expanded(
-              child: visibleOrders.isEmpty
-                  ? Center(
-                      child: Text(
-                        'All notifications dismissed',
-                        style: TextStyle(color: Colors.grey[500]),
-                      ),
-                    )
-                  : ListView.separated(
-                      itemCount: visibleOrders.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 8),
-                      itemBuilder: (context, index) {
-                        final order = visibleOrders[index];
-                        final originalIndex = recentOrders.indexOf(order);
-                        return Container(
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border(
-                              left: BorderSide(
-                                color: Colors.blue.shade400,
-                                width: 4,
-                              ),
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.05),
-                                blurRadius: 4,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        '${order['customer']} ordered',
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 14,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        'Product: ${order['product']}',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.grey[600],
-                                        ),
-                                      ),
-                                      Text(
-                                        'Region: ${order['region']}',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.grey[600],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                IconButton(
-                                  icon: const Icon(Icons.close),
-                                  iconSize: 20,
-                                  onPressed: () => _dismissNotification(originalIndex),
-                                  tooltip: 'Dismiss',
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
                     ),
-            ),
-          ],
+                  ],
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${_currentMetrics['lowStockAlerts'] ?? 0} items low in stock',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          'Manage your inventory',
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                        ),
+                      ],
+                    ),
+                    ElevatedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xff0c1c2c),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      child: const Text('View All', style: TextStyle(color: Colors.white)),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // NOTIFICATIONS SECTION
+              Text(
+                "Recent Orders (${visibleOrders.length})",
+                style: GoogleFonts.urbanist(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: const Color(0xff0c1c2c),
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (visibleOrders.isEmpty)
+                Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 40),
+                    child: Text(
+                      "All notifications cleared",
+                      style: TextStyle(color: Colors.grey.shade500),
+                    ),
+                  ),
+                )
+              else
+                ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: visibleOrders.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 12),
+                  itemBuilder: (context, index) {
+                    final order = visibleOrders[index];
+                    return Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border(
+                          left: BorderSide(color: Colors.blue.shade400, width: 4),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.05),
+                            blurRadius: 10,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        title: Text(
+                          '${order.customerName} ordered',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const SizedBox(height: 4),
+                            Text(
+                              'Product: ${order.productName} (Qty: ${order.quantity})',
+                              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                            ),
+                            Text(
+                              'From: ${order.region}',
+                              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                            ),
+                          ],
+                        ),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.close, size: 20),
+                          onPressed: () => _dismissNotification(order.id),
+                          tooltip: 'Dismiss',
+                        ),
+                      ),
+                    );
+                  },
+                ),
+            ],
+          ),
         ),
       ),
     );
