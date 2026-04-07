@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-// Ensure these paths match your project structure exactly
 import 'sales_list_page.dart';
 import 'vendor_profile_view.dart';
 import 'report_issue_page.dart';
@@ -55,7 +54,6 @@ class _DashboardPageState extends State<DashboardPage> {
         backgroundColor: const Color(0xff0c1c2c),
         elevation: 0,
         actions: [
-          // Settings Gear Icon
           IconButton(
             icon: const Icon(Icons.settings, color: Colors.white),
             tooltip: 'Settings',
@@ -71,7 +69,6 @@ class _DashboardPageState extends State<DashboardPage> {
               }
             },
           ),
-          // Logout Icon
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.white),
             tooltip: 'Logout',
@@ -88,10 +85,7 @@ class _DashboardPageState extends State<DashboardPage> {
           const SizedBox(width: 8),
         ],
       ),
-
       body: const VendorHome(),
-
-      // Floating Action Button for Support
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
           Navigator.push(
@@ -127,16 +121,11 @@ class _VendorHomeState extends State<VendorHome> {
     if (user == null) return _emptyMetrics();
 
     try {
-      final allProducts = await supabase
+      // Changed terminology: products -> services
+      final allServices = await supabase
           .from('products')
           .select('id')
           .eq('vendor_id', user.id);
-
-      final lowStockProducts = await supabase
-          .from('products')
-          .select('id')
-          .eq('vendor_id', user.id)
-          .lt('quantity', 5);
 
       // Fetch orders data
       List<Order> orders = [];
@@ -152,25 +141,28 @@ class _VendorHomeState extends State<VendorHome> {
             .eq('vendor_id', user.id)
             .order('created_at', ascending: false);
 
-        orders = (ordersData as List)
-            .map((o) => Order.fromJson(o))
-            .toList();
-        
+        orders = (ordersData as List).map((o) => Order.fromJson(o)).toList();
+
         totalSales = orders.fold(0, (sum, o) => sum + o.quantity);
         totalRevenue = orders.fold(0.0, (sum, o) => sum + o.totalPrice);
         totalOrders = orders.length;
-        
-        // Active orders: accepted, pending, shipped
-        pendingOrders = orders.where((o) => 
-          ['accepted', 'pending', 'shipped'].contains(o.status.toLowerCase())
-        ).length;
-        
-        // Notifications: count of 'request' status orders
-        int requestsCount = orders.where((o) => o.status.toLowerCase() == 'request').length;
+
+        pendingOrders = orders
+            .where(
+              (o) => [
+                'accepted',
+                'pending',
+                'shipped',
+              ].contains(o.status.toLowerCase()),
+            )
+            .length;
+
+        int requestsCount = orders
+            .where((o) => o.status.toLowerCase() == 'request')
+            .length;
 
         return {
-          'totalProducts': allProducts.length,
-          'lowStockAlerts': lowStockProducts.length,
+          'totalServices': allServices.length,
           'totalSales': totalSales,
           'totalOrders': totalOrders,
           'totalRevenue': totalRevenue,
@@ -189,8 +181,7 @@ class _VendorHomeState extends State<VendorHome> {
   }
 
   Map<String, dynamic> _emptyMetrics() => {
-    'totalProducts': 0,
-    'lowStockAlerts': 0,
+    'totalServices': 0,
     'totalSales': 0,
     'totalOrders': 0,
     'totalRevenue': 0.0,
@@ -216,7 +207,7 @@ class _VendorHomeState extends State<VendorHome> {
             const VendorProfileCard(),
             const SizedBox(height: 24),
             Text(
-              "Overview",
+              "Business Overview",
               style: GoogleFonts.urbanist(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
@@ -241,7 +232,7 @@ class _VendorHomeState extends State<VendorHome> {
 
                 return Column(
                   children: [
-                    // ROW 1: Sales & Inventory
+                    // ROW 1: Earnings & Services
                     Row(
                       children: [
                         Expanded(
@@ -249,15 +240,22 @@ class _VendorHomeState extends State<VendorHome> {
                             onTap: () => Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) => SalesListPage(metrics: data),
+                                builder: (context) =>
+                                    SalesListPage(metrics: data),
                               ),
                             ),
-                            title: "Sales Info",
+                            title: "Earnings Info",
                             accentColor: Colors.blue.shade700,
-                            icon: Icons.insights,
+                            icon: Icons.payments_outlined,
                             items: [
-                              _statRow("Total Sales", "${data['totalSales'] ?? 0}"),
-                              _statRow("Total Orders", "${data['totalOrders'] ?? 0}"),
+                              _statRow(
+                                "Total Revenue",
+                                "₹${data['totalRevenue']}",
+                              ),
+                              _statRow(
+                                "Total Bookings",
+                                "${data['totalSales']}",
+                              ),
                             ],
                           ),
                         ),
@@ -270,36 +268,37 @@ class _VendorHomeState extends State<VendorHome> {
                                 builder: (context) => const ProductListPage(),
                               ),
                             ),
-                            title: "Product Info",
+                            title: "Service Info",
                             accentColor: Colors.orange.shade800,
-                            icon: Icons.inventory_2_outlined,
+                            icon: Icons.design_services_outlined,
                             items: [
                               _statRow(
-                                "Low Stock",
-                                "${data['lowStockAlerts']} Items",
-                                isAlert: data['lowStockAlerts'] > 0,
+                                "Active Services",
+                                "${data['totalServices']}",
                               ),
-                              _statRow("Inventory", "View All"),
+                              _statRow("Catalog", "View All"),
                             ],
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 16),
-                    // ROW 2: Orders & Notifications
+                    // ROW 2: Bookings & Notifications
                     Row(
                       children: [
                         Expanded(
                           child: _buildStatCard(
                             onTap: () => Navigator.push(
                               context,
-                              MaterialPageRoute(builder: (context) => const OrdersPage()),
+                              MaterialPageRoute(
+                                builder: (context) => const OrdersPage(),
+                              ),
                             ),
-                            title: "Orders",
+                            title: "Bookings",
                             accentColor: Colors.purple.shade700,
-                            icon: Icons.local_shipping_outlined,
+                            icon: Icons.event_note_outlined,
                             items: [
-                              _statRow("Active", "${data['pendingOrders']}"),
+                              _statRow("Upcoming", "${data['pendingOrders']}"),
                               _statRow("History", "View Log"),
                             ],
                           ),
@@ -309,15 +308,17 @@ class _VendorHomeState extends State<VendorHome> {
                           child: _buildStatCard(
                             onTap: () => Navigator.push(
                               context,
-                              MaterialPageRoute(builder: (context) => const AlertsPage()),
+                              MaterialPageRoute(
+                                builder: (context) => const AlertsPage(),
+                              ),
                             ),
-                            title: "Alerts",
+                            title: "Action Alerts",
                             accentColor: Colors.teal.shade700,
-                            icon: Icons.notifications_active_outlined,
+                            icon: Icons.notification_important_outlined,
                             items: [
-                              _statRow("Requests", "Approve/Reject"),
+                              _statRow("User Requests", "Confirm/Decline"),
                               _statRow(
-                                "New",
+                                "New Alerts",
                                 "${data['notifications']}",
                                 isAlert: (data['notifications'] ?? 0) > 0,
                               ),
@@ -341,7 +342,7 @@ class _VendorHomeState extends State<VendorHome> {
     required Color accentColor,
     required IconData icon,
     required List<Widget> items,
-    VoidCallback? onTap, // Added interactivity
+    VoidCallback? onTap,
   }) {
     return InkWell(
       onTap: onTap,
@@ -399,7 +400,6 @@ class _VendorHomeState extends State<VendorHome> {
       ),
     );
   }
-
 }
 
 class VendorProfileCard extends StatelessWidget {
@@ -420,7 +420,7 @@ class VendorProfileCard extends StatelessWidget {
           const CircleAvatar(
             radius: 30,
             backgroundColor: Color(0xff0c1c2c),
-            child: Icon(Icons.store, color: Colors.white),
+            child: Icon(Icons.business_center, color: Colors.white),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -428,14 +428,14 @@ class VendorProfileCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  user?.userMetadata?['full_name'] ?? "Business Name",
+                  user?.userMetadata?['full_name'] ?? "Service Provider",
                   style: GoogleFonts.urbanist(
                     fontWeight: FontWeight.bold,
                     fontSize: 18,
                   ),
                 ),
                 Text(
-                  "GST: Pending Verification",
+                  "Verification Status: Pending",
                   style: TextStyle(color: Colors.grey.shade600),
                 ),
               ],
