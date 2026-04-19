@@ -151,10 +151,8 @@ class _VendorHomeState extends State<VendorHome> {
             .eq('vendor_id', user.id)
             .order('created_at', ascending: false);
 
-        orders = (ordersData as List)
-            .map((o) => Order.fromJson(o))
-            .toList();
-        
+        orders = (ordersData as List).map((o) => Order.fromJson(o)).toList();
+
         totalSales = orders.fold(0, (sum, o) => sum + o.quantity);
         totalRevenue = orders.fold(0.0, (sum, o) => sum + o.totalPrice);
         totalOrders = orders.length;
@@ -239,8 +237,10 @@ class _VendorHomeState extends State<VendorHome> {
                           child: _buildInteractiveSalesCard(
                             context: context,
                             data: data,
-                            onTotalSalesTap: () => _showSalesAnalyticsModal(context, data),
-                            onTotalOrdersTap: () => _showOrdersAnalyticsModal(context, data),
+                            onTotalSalesTap: () =>
+                                _showSalesAnalyticsModal(context, data),
+                            onTotalOrdersTap: () =>
+                                _showOrdersAnalyticsModal(context, data),
                           ),
                         ),
                         const SizedBox(width: 16),
@@ -256,6 +256,10 @@ class _VendorHomeState extends State<VendorHome> {
                             accentColor: Colors.orange.shade800,
                             icon: Icons.inventory_2_outlined,
                             items: [
+                              _statRow(
+                                "Total Products",
+                                "${data['totalProducts']}", // ← add this line
+                              ),
                               _statRow(
                                 "Low Stock",
                                 "${data['lowStockAlerts']} Items",
@@ -386,7 +390,9 @@ class _VendorHomeState extends State<VendorHome> {
     required VoidCallback onTotalOrdersTap,
   }) {
     final orders = (data['orders'] ?? []) as List<Order>;
-    final visibleOrders = orders.where((o) => !_dismissedOrderIds.contains(o.id)).toList();
+    final visibleOrders = orders
+        .where((o) => !_dismissedOrderIds.contains(o.id))
+        .toList();
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -425,7 +431,9 @@ class _VendorHomeState extends State<VendorHome> {
             child: Container(
               padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
               decoration: BoxDecoration(
-                border: Border(bottom: BorderSide(color: Colors.blue.shade200, width: 2)),
+                border: Border(
+                  bottom: BorderSide(color: Colors.blue.shade200, width: 2),
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -445,7 +453,11 @@ class _VendorHomeState extends State<VendorHome> {
                           color: const Color(0xff0c1c2c),
                         ),
                       ),
-                      Icon(Icons.arrow_forward, size: 14, color: Colors.blue.shade700),
+                      Icon(
+                        Icons.arrow_forward,
+                        size: 14,
+                        color: Colors.blue.shade700,
+                      ),
                     ],
                   ),
                 ],
@@ -459,7 +471,9 @@ class _VendorHomeState extends State<VendorHome> {
             child: Container(
               padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
               decoration: BoxDecoration(
-                border: Border(bottom: BorderSide(color: Colors.blue.shade200, width: 2)),
+                border: Border(
+                  bottom: BorderSide(color: Colors.blue.shade200, width: 2),
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -479,7 +493,11 @@ class _VendorHomeState extends State<VendorHome> {
                           color: const Color(0xff0c1c2c),
                         ),
                       ),
-                      Icon(Icons.arrow_forward, size: 14, color: Colors.blue.shade700),
+                      Icon(
+                        Icons.arrow_forward,
+                        size: 14,
+                        color: Colors.blue.shade700,
+                      ),
                     ],
                   ),
                 ],
@@ -534,13 +552,19 @@ class _VendorHomeState extends State<VendorHome> {
                               ),
                               Text(
                                 "${order.productName} (Qty: ${order.quantity})",
-                                style: const TextStyle(fontSize: 9, color: Colors.grey),
+                                style: const TextStyle(
+                                  fontSize: 9,
+                                  color: Colors.grey,
+                                ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
                               Text(
                                 "From: ${order.region}",
-                                style: const TextStyle(fontSize: 9, color: Colors.grey),
+                                style: const TextStyle(
+                                  fontSize: 9,
+                                  color: Colors.grey,
+                                ),
                               ),
                             ],
                           ),
@@ -566,15 +590,20 @@ class _VendorHomeState extends State<VendorHome> {
     );
   }
 
-  void _showSalesAnalyticsModal(BuildContext context, Map<String, dynamic> data) {
+  void _showSalesAnalyticsModal(
+    BuildContext context,
+    Map<String, dynamic> data,
+  ) {
     final orders = (data['orders'] ?? []) as List<Order>;
-    
+
     Map<String, int> regionWiseSales = {};
     Map<String, int> productWiseSales = {};
-    
+
     for (var order in orders) {
-      regionWiseSales[order.region] = (regionWiseSales[order.region] ?? 0) + order.quantity;
-      productWiseSales[order.productName] = (productWiseSales[order.productName] ?? 0) + order.quantity;
+      regionWiseSales[order.region] =
+          (regionWiseSales[order.region] ?? 0) + order.quantity;
+      productWiseSales[order.productName] =
+          (productWiseSales[order.productName] ?? 0) + order.quantity;
     }
 
     showDialog(
@@ -614,10 +643,12 @@ class _VendorHomeState extends State<VendorHome> {
                         DataColumn(label: Text("Qty Sold")),
                       ],
                       rows: regionWiseSales.entries.map((e) {
-                        return DataRow(cells: [
-                          DataCell(Text(e.key)),
-                          DataCell(Text("${e.value}")),
-                        ]);
+                        return DataRow(
+                          cells: [
+                            DataCell(Text(e.key)),
+                            DataCell(Text("${e.value}")),
+                          ],
+                        );
                       }).toList(),
                     ),
                   ),
@@ -647,10 +678,14 @@ class _VendorHomeState extends State<VendorHome> {
                         DataColumn(label: Text("Qty Sold")),
                       ],
                       rows: productWiseSales.entries.map((e) {
-                        return DataRow(cells: [
-                          DataCell(Text(e.key, overflow: TextOverflow.ellipsis)),
-                          DataCell(Text("${e.value}")),
-                        ]);
+                        return DataRow(
+                          cells: [
+                            DataCell(
+                              Text(e.key, overflow: TextOverflow.ellipsis),
+                            ),
+                            DataCell(Text("${e.value}")),
+                          ],
+                        );
                       }).toList(),
                     ),
                   ),
@@ -668,17 +703,21 @@ class _VendorHomeState extends State<VendorHome> {
     );
   }
 
-  void _showOrdersAnalyticsModal(BuildContext context, Map<String, dynamic> data) {
+  void _showOrdersAnalyticsModal(
+    BuildContext context,
+    Map<String, dynamic> data,
+  ) {
     final orders = (data['orders'] ?? []) as List<Order>;
     String selectedPeriod = 'all';
-    
+
     Map<String, int> getOrdersByPeriod(String period) {
       Map<String, int> periodOrders = {};
-      
+
       for (var order in orders) {
         String key;
         if (period == 'monthly') {
-          key = "${order.createdAt.year}-${order.createdAt.month.toString().padLeft(2, '0')}";
+          key =
+              "${order.createdAt.year}-${order.createdAt.month.toString().padLeft(2, '0')}";
         } else if (period == 'yearly') {
           key = "${order.createdAt.year}";
         } else {
@@ -686,7 +725,7 @@ class _VendorHomeState extends State<VendorHome> {
         }
         periodOrders[key] = (periodOrders[key] ?? 0) + order.quantity;
       }
-      
+
       return periodOrders;
     }
 
@@ -695,7 +734,7 @@ class _VendorHomeState extends State<VendorHome> {
       builder: (context) => StatefulBuilder(
         builder: (context, setState) {
           final orderData = getOrdersByPeriod(selectedPeriod);
-          
+
           return AlertDialog(
             title: const Text("Orders Analytics"),
             content: SizedBox(
@@ -719,9 +758,18 @@ class _VendorHomeState extends State<VendorHome> {
                         Expanded(
                           child: SegmentedButton<String>(
                             segments: const [
-                              ButtonSegment(label: Text("Product"), value: 'all'),
-                              ButtonSegment(label: Text("Month"), value: 'monthly'),
-                              ButtonSegment(label: Text("Year"), value: 'yearly'),
+                              ButtonSegment(
+                                label: Text("Product"),
+                                value: 'all',
+                              ),
+                              ButtonSegment(
+                                label: Text("Month"),
+                                value: 'monthly',
+                              ),
+                              ButtonSegment(
+                                label: Text("Year"),
+                                value: 'yearly',
+                              ),
                             ],
                             selected: {selectedPeriod},
                             onSelectionChanged: (value) {
@@ -748,7 +796,13 @@ class _VendorHomeState extends State<VendorHome> {
                         child: DataTable(
                           columns: [
                             DataColumn(
-                              label: Text(selectedPeriod == 'all' ? "Product" : selectedPeriod == 'monthly' ? "Month" : "Year"),
+                              label: Text(
+                                selectedPeriod == 'all'
+                                    ? "Product"
+                                    : selectedPeriod == 'monthly'
+                                    ? "Month"
+                                    : "Year",
+                              ),
                             ),
                             const DataColumn(label: Text("Qty Sold")),
                             const DataColumn(label: Text("Revenue")),
@@ -757,7 +811,8 @@ class _VendorHomeState extends State<VendorHome> {
                             double revenue = orders
                                 .where((o) {
                                   if (selectedPeriod == 'monthly') {
-                                    String key = "${o.createdAt.year}-${o.createdAt.month.toString().padLeft(2, '0')}";
+                                    String key =
+                                        "${o.createdAt.year}-${o.createdAt.month.toString().padLeft(2, '0')}";
                                     return key == e.key;
                                   } else if (selectedPeriod == 'yearly') {
                                     return "${o.createdAt.year}" == e.key;
@@ -766,12 +821,18 @@ class _VendorHomeState extends State<VendorHome> {
                                   }
                                 })
                                 .fold(0.0, (sum, o) => sum + o.totalPrice);
-                            
-                            return DataRow(cells: [
-                              DataCell(Text(e.key, overflow: TextOverflow.ellipsis)),
-                              DataCell(Text("${e.value}")),
-                              DataCell(Text("₹${revenue.toStringAsFixed(2)}")),
-                            ]);
+
+                            return DataRow(
+                              cells: [
+                                DataCell(
+                                  Text(e.key, overflow: TextOverflow.ellipsis),
+                                ),
+                                DataCell(Text("${e.value}")),
+                                DataCell(
+                                  Text("₹${revenue.toStringAsFixed(2)}"),
+                                ),
+                              ],
+                            );
                           }).toList(),
                         ),
                       ),
