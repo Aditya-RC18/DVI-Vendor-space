@@ -17,26 +17,21 @@ class _CompleteVendorProfilePageState extends State<CompleteVendorProfilePage> {
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
 
-  // ── About Yourself ──────────────────────────────────────────────────────────
   final _nameController = TextEditingController();
-  final _dobController = TextEditingController(); // Date of Birth
+  final _dobController = TextEditingController(); 
   final _phoneController = TextEditingController();
   String _selectedCountryCode = '91';
 
-  // ── About Business ──────────────────────────────────────────────────────────
   final _businessNameController = TextEditingController();
   final _addressController = TextEditingController();
   final _cityController = TextEditingController();
   final _stateController = TextEditingController();
   final _pincodeController = TextEditingController();
 
-  // Optional business contact numbers (phone or telephone)
   final List<_BusinessContact> _businessContacts = [];
 
-  // Display only — from auth
   String? _displayEmail;
 
-  // ── Pre-calculated constants ─────────────────────────────────────────────
   static const _fieldBgColor = Color(0x0DFFFFFF);
   static const _fieldBorderColor = Color(0x1AFFFFFF);
   static const _amberColor = Color(0xFFFFC107);
@@ -53,7 +48,6 @@ class _CompleteVendorProfilePageState extends State<CompleteVendorProfilePage> {
     if (user == null) return;
     _displayEmail = user.email;
 
-    // Try to load an already-saved row first (back-nav from page 3)
     Supabase.instance.client
         .from('vendors')
         .select()
@@ -62,7 +56,7 @@ class _CompleteVendorProfilePageState extends State<CompleteVendorProfilePage> {
         .then((row) {
           if (!mounted) return;
           if (row != null) {
-            // Restore all fields from the existing DB row
+    
             setState(() {
               _nameController.text = row['full_name'] ?? '';
               _dobController.text = row['date_of_birth'] ?? '';
@@ -72,7 +66,6 @@ class _CompleteVendorProfilePageState extends State<CompleteVendorProfilePage> {
               _stateController.text = row['state'] ?? '';
               _pincodeController.text = row['pincode'] ?? '';
 
-              // Parse stored phone "+CC localNumber"
               final rawPhone = (row['phone'] ?? '') as String;
               if (rawPhone.startsWith('+')) {
                 final digits = rawPhone.replaceAll(RegExp(r'\D'), '');
@@ -89,12 +82,11 @@ class _CompleteVendorProfilePageState extends State<CompleteVendorProfilePage> {
                 _phoneController.text = rawPhone;
               }
 
-              // Restore business contacts
               final contacts = (row['business_contacts'] as List?) ?? [];
               _businessContacts.clear();
               for (final c in contacts) {
                 final bc = _BusinessContact();
-                // Format stored: "+CC localNumber" or "+CC xxx-xxxxx"
+             
                 final s = c.toString();
                 if (s.startsWith('+')) {
                   final spaceIdx = s.indexOf(' ');
@@ -107,13 +99,13 @@ class _CompleteVendorProfilePageState extends State<CompleteVendorProfilePage> {
                 } else {
                   bc.controller.text = s;
                 }
-                // Heuristic: digits-only means mobile; hyphens mean telephone
+               
                 bc.isMobile = !bc.controller.text.contains('-');
                 _businessContacts.add(bc);
               }
             });
           } else {
-            // No row yet — pre-fill name from OAuth metadata only
+          
             final metaName = user.userMetadata?['full_name'];
             if (metaName != null && metaName.toString().isNotEmpty) {
               _nameController.text = metaName.toString();
@@ -138,7 +130,7 @@ class _CompleteVendorProfilePageState extends State<CompleteVendorProfilePage> {
     super.dispose();
   }
 
-  // ── Date picker ──────────────────────────────────────────────────────────
+
   Future<void> _pickDate() async {
     final now = DateTime.now();
     final picked = await showDatePicker(
@@ -165,7 +157,6 @@ class _CompleteVendorProfilePageState extends State<CompleteVendorProfilePage> {
     }
   }
 
-  // ── Business contact helpers ─────────────────────────────────────────────
   void _addBusinessContact() {
     setState(() {
       _businessContacts.add(_BusinessContact());
@@ -178,7 +169,6 @@ class _CompleteVendorProfilePageState extends State<CompleteVendorProfilePage> {
     setState(() {});
   }
 
-  // ── Submit ────────────────────────────────────────────────────────────────
   Future<void> _submitProfile() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
@@ -189,7 +179,6 @@ class _CompleteVendorProfilePageState extends State<CompleteVendorProfilePage> {
 
       final role = user.userMetadata?['role'] as String? ?? 'venue_distributor';
 
-      // Effective contact: first business contact if provided, else personal phone
       final personalPhone =
           '+$_selectedCountryCode ${_phoneController.text.trim()}';
       final businessContactNumbers = _businessContacts
@@ -218,7 +207,6 @@ class _CompleteVendorProfilePageState extends State<CompleteVendorProfilePage> {
 
       await Supabase.instance.client.from('vendors').insert(data);
 
-      // Verify row exists
       final check = await Supabase.instance.client
           .from('vendors')
           .select()
@@ -245,7 +233,6 @@ class _CompleteVendorProfilePageState extends State<CompleteVendorProfilePage> {
     }
   }
 
-  // ── Build ─────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
@@ -256,7 +243,7 @@ class _CompleteVendorProfilePageState extends State<CompleteVendorProfilePage> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
-        // Back → sign out and return to login
+
         leading: IconButton(
           icon: const Icon(
             Icons.arrow_back_ios_new_rounded,
@@ -325,7 +312,6 @@ class _CompleteVendorProfilePageState extends State<CompleteVendorProfilePage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        // ── Header ──────────────────────────────────────────
                         Text(
                           'Complete Profile',
                           style: TextStyle(
@@ -366,9 +352,6 @@ class _CompleteVendorProfilePageState extends State<CompleteVendorProfilePage> {
                           ),
                         const SizedBox(height: 40),
 
-                        // ════════════════════════════════════════════════════
-                        // ABOUT YOURSELF
-                        // ════════════════════════════════════════════════════
                         _sectionHeader('About Yourself'),
                         const SizedBox(height: 16),
 

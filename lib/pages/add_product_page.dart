@@ -18,7 +18,6 @@ class _AddProductPageState extends State<AddProductPage> {
   final _supabase = Supabase.instance.client;
   bool _isLoading = false;
 
-  // Restored all form controllers
   final _nameController = TextEditingController();
   final _descController = TextEditingController();
   final _priceController = TextEditingController();
@@ -27,8 +26,12 @@ class _AddProductPageState extends State<AddProductPage> {
   final _dimsController = TextEditingController();
 
   final ImagePicker _picker = ImagePicker();
-  final List<XFile> _selectedImages = []; // Newly selected images
-  List<String> _existingImageUrls = []; // Existing images from database
+
+  // ── New: store bytes instead of XFile paths ──
+  final List<Uint8List> _selectedImageBytes = [];
+  final List<String> _selectedImageNames = [];
+  List<String> _existingImageUrls = [];
+
   String? _selectedCategory;
   List<Map<String, dynamic>> _supabaseCategories = [];
 
@@ -46,12 +49,10 @@ class _AddProductPageState extends State<AddProductPage> {
       _qtyController.text = p['quantity']?.toString() ?? '';
       _dimsController.text = p['dimensions'] ?? '';
 
-      // Load existing images
       final imageUrlData = p['image_url'];
       if (imageUrlData != null && imageUrlData.isNotEmpty) {
         try {
           if (imageUrlData is String) {
-            // Parse JSON string
             final List<dynamic> parsed = jsonDecode(imageUrlData);
             _existingImageUrls = parsed.map((url) => url.toString()).toList();
           } else if (imageUrlData is List) {
@@ -67,6 +68,17 @@ class _AddProductPageState extends State<AddProductPage> {
     }
   }
 
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _descController.dispose();
+    _priceController.dispose();
+    _discountController.dispose();
+    _qtyController.dispose();
+    _dimsController.dispose();
+    super.dispose();
+  }
+
   Future<void> _fetchCategories() async {
     final data = await _supabase
         .from('vendor_categories')
@@ -75,21 +87,33 @@ class _AddProductPageState extends State<AddProductPage> {
     setState(() => _supabaseCategories = List<Map<String, dynamic>>.from(data));
   }
 
+  // ── Read bytes immediately after picking ──
   Future<void> _pickImages() async {
     final List<XFile> images = await _picker.pickMultiImage();
-    if (images.isNotEmpty) setState(() => _selectedImages.addAll(images));
+    if (images.isNotEmpty) {
+      for (final image in images) {
+        try {
+          final bytes = await image.readAsBytes();
+          setState(() {
+            _selectedImageBytes.add(bytes);
+            _selectedImageNames.add(image.name);
+          });
+        } catch (e) {
+          debugPrint('Error reading image: $e');
+        }
+      }
+    }
   }
 
+  // ── Upload using bytes, not file path ──
   Future<List<String>> _uploadImages(String productId) async {
     List<String> imageUrls = [];
     final userId = _supabase.auth.currentUser!.id;
-    debugPrint('Starting image upload for product: $productId');
-    debugPrint('Number of images to upload: ${_selectedImages.length}');
 
-    for (int i = 0; i < _selectedImages.length; i++) {
-      final image = _selectedImages[i];
-      final Uint8List bytes = await image.readAsBytes();
-      final fileExt = image.name.split('.').last;
+    for (int i = 0; i < _selectedImageBytes.length; i++) {
+      final bytes = _selectedImageBytes[i];
+      final name = _selectedImageNames[i];
+      final fileExt = name.split('.').last.toLowerCase();
       final filePath =
           '$userId/$productId/img_${DateTime.now().millisecondsSinceEpoch}_$i.$fileExt';
 
@@ -104,18 +128,16 @@ class _AddProductPageState extends State<AddProductPage> {
                 upsert: true,
               ),
             );
-        debugPrint('Image $i uploaded successfully');
 
         final url = _supabase.storage
             .from('vendor_assets')
             .getPublicUrl(filePath);
         imageUrls.add(url);
+        debugPrint('✅ Image $i uploaded: $url');
       } catch (e) {
-        debugPrint("Upload failed: $e");
+        debugPrint('❌ Upload failed for image $i: $e');
       }
     }
-    debugPrint('Total uploaded images: ${imageUrls.length}');
-    debugPrint('Image URLs: $imageUrls');
     return imageUrls;
   }
 
@@ -152,40 +174,31 @@ class _AddProductPageState extends State<AddProductPage> {
         productId = res['id'].toString();
       }
 
-      debugPrint('Selected images count: ${_selectedImages.length}');
-      debugPrint('Existing images count: ${_existingImageUrls.length}');
-
-      if (_selectedImages.isNotEmpty) {
-        debugPrint('Uploading new images...');
+      // ── Use _selectedImageBytes instead of _selectedImages ──
+      if (_selectedImageBytes.isNotEmpty) {
         final newUrls = await _uploadImages(productId);
-        debugPrint('New URLs received: $newUrls');
         final allUrls = [..._existingImageUrls, ...newUrls];
-        debugPrint('All URLs combined: $allUrls');
         final imageUrlJson = jsonEncode(allUrls);
-        debugPrint('JSON to save: $imageUrlJson');
         await _supabase
             .from('products')
             .update({'image_url': imageUrlJson})
             .eq('id', productId);
-        debugPrint('Images saved to database');
+        debugPrint('✅ Images saved: $imageUrlJson');
       } else if (_existingImageUrls.isNotEmpty) {
-        // Update with existing images only (in case some were removed)
-        debugPrint('Saving existing images only...');
         final imageUrlJson = jsonEncode(_existingImageUrls);
         await _supabase
             .from('products')
             .update({'image_url': imageUrlJson})
             .eq('id', productId);
-        debugPrint('Existing images saved to database');
-      } else {
-        debugPrint('No images to save');
       }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Product saved successfully!')),
+          const SnackBar(
+            content: Text('Product saved successfully!'),
+            backgroundColor: Colors.green,
+          ),
         );
-        // Clear form and images
         _nameController.clear();
         _descController.clear();
         _priceController.clear();
@@ -193,7 +206,8 @@ class _AddProductPageState extends State<AddProductPage> {
         _qtyController.clear();
         _dimsController.clear();
         setState(() {
-          _selectedImages.clear();
+          _selectedImageBytes.clear();
+          _selectedImageNames.clear();
           _existingImageUrls.clear();
           _selectedCategory = null;
         });
@@ -201,17 +215,12 @@ class _AddProductPageState extends State<AddProductPage> {
       }
     } catch (e) {
       if (mounted) {
-        String errorMessage = 'Error saving product';
-        if (e.toString().contains('Bucket not found')) {
-          errorMessage =
-              'Storage bucket not found. Please check your Supabase storage configuration.';
-        } else if (e.toString().contains('permission')) {
-          errorMessage =
-              'Permission denied. Please check your storage bucket policies.';
-        }
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('$errorMessage: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error saving product: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -239,21 +248,26 @@ class _AddProductPageState extends State<AddProductPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Image Picker Section
+              // ── Image Picker Section ──
               SizedBox(
                 height: 120,
                 child: ListView.builder(
                   scrollDirection: Axis.horizontal,
+                  // ── Use _selectedImageBytes.length ──
                   itemCount:
-                      _existingImageUrls.length + _selectedImages.length + 1,
+                      _existingImageUrls.length +
+                      _selectedImageBytes.length +
+                      1,
                   itemBuilder: (context, index) {
-                    // Add button at the end
+                    // Add button at end
                     if (index ==
-                        _existingImageUrls.length + _selectedImages.length) {
+                        _existingImageUrls.length +
+                            _selectedImageBytes.length) {
                       return GestureDetector(
                         onTap: _pickImages,
                         child: Container(
                           width: 100,
+                          margin: const EdgeInsets.only(right: 8),
                           decoration: BoxDecoration(
                             border: Border.all(color: Colors.grey.shade300),
                             borderRadius: BorderRadius.circular(12),
@@ -266,28 +280,40 @@ class _AddProductPageState extends State<AddProductPage> {
                       );
                     }
 
-                    // Show existing images first
+                    // Existing images from DB
                     if (index < _existingImageUrls.length) {
                       return Container(
                         width: 100,
                         margin: const EdgeInsets.only(right: 8),
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(12),
-                          image: DecorationImage(
-                            image: NetworkImage(_existingImageUrls[index]),
-                            fit: BoxFit.cover,
-                          ),
                         ),
                         child: Stack(
                           children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: Image.network(
+                                _existingImageUrls[index],
+                                width: 100,
+                                height: 120,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) =>
+                                    Container(
+                                      width: 100,
+                                      height: 120,
+                                      color: Colors.grey.shade200,
+                                      child: const Icon(Icons.broken_image),
+                                    ),
+                              ),
+                            ),
                             Positioned(
                               top: 4,
                               right: 4,
                               child: GestureDetector(
                                 onTap: () {
-                                  setState(() {
-                                    _existingImageUrls.removeAt(index);
-                                  });
+                                  setState(
+                                    () => _existingImageUrls.removeAt(index),
+                                  );
                                 },
                                 child: Container(
                                   padding: const EdgeInsets.all(2),
@@ -308,27 +334,34 @@ class _AddProductPageState extends State<AddProductPage> {
                       );
                     }
 
-                    // Show newly selected images
+                    // ── Newly selected images using bytes ──
                     final selectedIndex = index - _existingImageUrls.length;
                     return Container(
                       width: 100,
                       margin: const EdgeInsets.only(right: 8),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(12),
-                        image: DecorationImage(
-                          image: NetworkImage(_selectedImages[index].path),
-                          fit: BoxFit.cover,
-                        ),
+                        border: Border.all(color: Colors.grey.shade300),
                       ),
                       child: Stack(
                         children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.memory(
+                              _selectedImageBytes[selectedIndex],
+                              width: 100,
+                              height: 120,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
                           Positioned(
                             top: 4,
                             right: 4,
                             child: GestureDetector(
                               onTap: () {
                                 setState(() {
-                                  _selectedImages.removeAt(selectedIndex);
+                                  _selectedImageBytes.removeAt(selectedIndex);
+                                  _selectedImageNames.removeAt(selectedIndex);
                                 });
                               },
                               child: Container(
@@ -352,8 +385,12 @@ class _AddProductPageState extends State<AddProductPage> {
                 ),
               ),
               const SizedBox(height: 25),
+
+              // ── Form Fields ──
               TextFormField(
                 controller: _nameController,
+                validator: (v) =>
+                    v == null || v.isEmpty ? 'Name is required' : null,
                 decoration: const InputDecoration(
                   labelText: "Product Name",
                   border: OutlineInputBorder(),
@@ -370,7 +407,7 @@ class _AddProductPageState extends State<AddProductPage> {
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
-                initialValue: _selectedCategory,
+                value: _selectedCategory,
                 items: _supabaseCategories
                     .map(
                       (c) => DropdownMenuItem(
@@ -392,6 +429,8 @@ class _AddProductPageState extends State<AddProductPage> {
                     child: TextFormField(
                       controller: _priceController,
                       keyboardType: TextInputType.number,
+                      validator: (v) =>
+                          v == null || v.isEmpty ? 'Price is required' : null,
                       decoration: const InputDecoration(
                         labelText: "Actual Price (₹)",
                         border: OutlineInputBorder(),
@@ -415,6 +454,8 @@ class _AddProductPageState extends State<AddProductPage> {
               TextFormField(
                 controller: _qtyController,
                 keyboardType: TextInputType.number,
+                validator: (v) =>
+                    v == null || v.isEmpty ? 'Quantity is required' : null,
                 decoration: const InputDecoration(
                   labelText: "Quantity",
                   border: OutlineInputBorder(),

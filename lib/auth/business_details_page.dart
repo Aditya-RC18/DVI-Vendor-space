@@ -9,8 +9,6 @@ import '../pages/verification_status_page.dart';
 import '../utils/constants.dart';
 import 'complete_profile_page.dart';
 
-/// Page 3 of signup: banking info + document uploads.
-/// On submit, sets business_submitted = true and routes to VerificationStatusPage.
 class BusinessDetailsPage extends StatefulWidget {
   const BusinessDetailsPage({super.key});
 
@@ -23,15 +21,12 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
   bool _isLoading = false;
   bool _obscureAccount = true;
 
-  // ── Banking fields ──────────────────────────────────────────────────────
   final _accountHolderController = TextEditingController();
   final _accountNumberController = TextEditingController();
   final _ifscController = TextEditingController();
 
-  // ── ID details ───────────────────────────────────────────────────────────
   final _idNumberController = TextEditingController();
 
-  // ── Document images ──────────────────────────────────────────────────────
   File? _bankProof;
   File? _idProof;
   File? _businessProof;
@@ -51,7 +46,6 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
     super.dispose();
   }
 
-  // ── Image picker with auto-compress ─────────────────────────────────────
   Future<File?> _pick(String label) async {
     final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
     if (picked == null) return null;
@@ -59,10 +53,8 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
     File file = File(picked.path);
     int size = await file.length();
 
-    // Already within limit — use as-is
     if (size <= _maxBytes) return file;
 
-    // Try to compress iteratively: 80 → 60 → 40 → 20 %
     final tmpDir = file.parent.path;
     const qualities = [80, 60, 40, 20];
     for (final q in qualities) {
@@ -77,11 +69,10 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
       if (result == null) break;
       final compressed = File(result.path);
       if (await compressed.length() <= _maxBytes) {
-        return compressed; // ✅ fits
+        return compressed; 
       }
     }
 
-    // Still too large after all compression attempts
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -96,7 +87,6 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
     return null;
   }
 
-  // ── Upload helper ────────────────────────────────────────────────────────
   Future<String?> _upload(File file, String userId, String name) async {
     final path = '$userId/${name}_${DateTime.now().millisecondsSinceEpoch}.jpg';
     await Supabase.instance.client.storage
@@ -105,7 +95,6 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
     return path;
   }
 
-  // ── Submit ────────────────────────────────────────────────────────────────
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     if (_bankProof == null || _idProof == null || _businessProof == null) {
@@ -124,7 +113,6 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
       if (user == null) throw 'User not authenticated';
       final uid = user.id;
 
-      // Upload all three docs in parallel
       final results = await Future.wait([
         _upload(_bankProof!, uid, 'bank_proof'),
         _upload(_idProof!, uid, 'id_proof'),
@@ -145,7 +133,6 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
           })
           .eq('id', uid);
 
-      // Re-fetch the updated profile to pass to VerificationStatusPage
       final raw = await Supabase.instance.client
           .from('vendors')
           .select()
@@ -179,7 +166,6 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
     }
   }
 
-  // ── Build ─────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
@@ -188,8 +174,7 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        // Back to page 2 — works whether arrived via push (new accounts)
-        // or via AuthWrapper direct placement (pre-existing accounts).
+
         leading: IconButton(
           icon: const Icon(
             Icons.arrow_back_ios_new_rounded,
@@ -234,7 +219,6 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
         ),
         child: Stack(
           children: [
-            // Ambient glow
             Positioned(
               top: -size.height * 0.15,
               right: -size.width * 0.2,
@@ -278,9 +262,6 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
                       ),
                       const SizedBox(height: 40),
 
-                      // ════════════════════════════════════════════════════
-                      // BANKING INFORMATION
-                      // ════════════════════════════════════════════════════
                       _sectionHeader(
                         Icons.account_balance_outlined,
                         'Banking Information',
@@ -297,7 +278,6 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
                       ),
                       const SizedBox(height: 16),
 
-                      // Account number with obscure toggle
                       _buildLabel('Account Number'),
                       const SizedBox(height: 8),
                       Container(
@@ -367,9 +347,6 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
                       ),
                       const SizedBox(height: 40),
 
-                      // ════════════════════════════════════════════════════
-                      // DOCUMENT UPLOADS
-                      // ════════════════════════════════════════════════════
                       _sectionHeader(
                         Icons.upload_file_outlined,
                         'Document Uploads',
@@ -381,7 +358,6 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
                       ),
                       const SizedBox(height: 20),
 
-                      // Bank Proof
                       _buildDocPicker(
                         label: 'Bank Verification Proof',
                         subtitle: 'Passbook front page or cancelled cheque',
@@ -395,7 +371,6 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
                       ),
                       const SizedBox(height: 20),
 
-                      // ID Proof: number + image
                       _buildLabel('ID Proof'),
                       const SizedBox(height: 8),
                       _buildTextFieldRaw(
@@ -407,7 +382,7 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
                             : null,
                       ),
                       const SizedBox(height: 10),
-                      // Warning
+
                       Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 12,
@@ -457,7 +432,6 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
                       ),
                       const SizedBox(height: 20),
 
-                      // Business Proof
                       _buildDocPicker(
                         label: 'Business Proof',
                         subtitle: 'GST certificate, trade licence, etc.',
@@ -472,7 +446,6 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
 
                       const SizedBox(height: 48),
 
-                      // ── Submit ─────────────────────────────────────────
                       ElevatedButton.icon(
                         onPressed: _isLoading ? null : _submit,
                         icon: _isLoading
@@ -518,8 +491,6 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
       ),
     );
   }
-
-  // ── Widgets ───────────────────────────────────────────────────────────────
 
   Widget _sectionHeader(IconData icon, String text) {
     return Row(
@@ -727,7 +698,6 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
   }
 }
 
-// ── Formatter helpers ─────────────────────────────────────────────────────────
 class UpperCaseTextFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(

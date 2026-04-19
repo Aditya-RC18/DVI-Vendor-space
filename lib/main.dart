@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'config/supabase_config.dart';
 import 'utils/constants.dart';
@@ -13,16 +15,29 @@ import 'services/auth_service.dart';
 import 'auth/complete_profile_page.dart';
 import 'auth/admin_setup_page.dart';
 import 'auth/business_details_page.dart';
+import 'services/notification_service.dart';
+import 'firebase_options.dart';
+
+@pragma('vm:entry-point')
+Future<void> _firebaseBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+}
+
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  FirebaseMessaging.onBackgroundMessage(_firebaseBackgroundHandler);
+
   await SupabaseConfig.initialize();
+
+  await NotificationService().initialize();
+
   runApp(const MyApp());
 }
-
-// ── Global Navigator Key ───────────────────────
-// Add this at the top of main.dart (outside all classes)
-final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -31,12 +46,13 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'DreamVentz Vendor',
+      navigatorKey: navigatorKey,
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff0c1c2c)),
         useMaterial3: true,
         fontFamily: GoogleFonts.urbanist().fontFamily,
-        fontFamilyFallback: [
+        fontFamilyFallback: const [
           'Noto Sans Symbols',
           'Noto Color Emoji',
           'Apple Color Emoji',
@@ -46,7 +62,7 @@ class MyApp extends StatelessWidget {
       ),
       initialRoute: '/',
       routes: {
-        '/': (context) => const LoginPage(),
+        '/': (context) => const AuthWrapper(), 
         AppConstants.loginRoute: (context) => const LoginPage(),
         AppConstants.signupRoute: (context) => const SignupPage(),
         AppConstants.dashboardRoute: (context) => const DashboardPage(),
@@ -69,14 +85,12 @@ class _AuthWrapperState extends State<AuthWrapper> {
   Widget? _currentWidget;
 
   late final StreamSubscription<AuthState> _authSubscription;
+  RealtimeChannel? _bookingChannel;
 
   @override
   void initState() {
     super.initState();
     _handleAuth();
-
-    // Start listening for new bookings as soon as vendor logs in
-    _listenToNewBookings();
   }
 
   @override
@@ -86,21 +100,16 @@ class _AuthWrapperState extends State<AuthWrapper> {
     super.dispose();
   }
 
-  // ── Real-time booking listener ─────────────
-  RealtimeChannel? _bookingChannel;
-
   void _listenToNewBookings() {
     _bookingChannel = Supabase.instance.client
         .channel('bookings-channel')
         .onPostgresChanges(
           event: PostgresChangeEvent.insert,
           schema: 'public',
-          table: 'bookings',
+          table: 'orderslist', 
           callback: (payload) {
             final newBooking = payload.newRecord;
-            debugPrint('📦 New booking received: $newBooking');
-
-            // Show notification banner
+            debugPrint('📦 New order received: $newBooking');
             WidgetsBinding.instance.addPostFrameCallback((_) {
               _showNewBookingBanner(newBooking);
             });
@@ -108,15 +117,8 @@ class _AuthWrapperState extends State<AuthWrapper> {
         )
         .subscribe();
   }
-
   void _showNewBookingBanner(Map<String, dynamic> data) {
-    // Get the current context from navigator key or use global key
-    final context = _currentWidget != null
-        ? ((_currentWidget as dynamic).key as GlobalKey?)?.currentContext
-        : null;
-
-    // Use ScaffoldMessenger with root context
-    final scaffoldContext = _getScaffoldContext();
+    final scaffoldContext = navigatorKey.currentContext;
     if (scaffoldContext == null) return;
 
     ScaffoldMessenger.of(scaffoldContext).showSnackBar(
@@ -125,23 +127,25 @@ class _AuthWrapperState extends State<AuthWrapper> {
           children: [
             const Text('🎉', style: TextStyle(fontSize: 22)),
             const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'New Booking Received!',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 15,
-                    color: Colors.white,
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'New Booking Received!',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                      color: Colors.white,
+                    ),
                   ),
-                ),
-                Text(
-                  'Amount: ₹${data['total_amount']?.toString() ?? '0'}',
-                  style: const TextStyle(fontSize: 12, color: Colors.white70),
-                ),
-              ],
+                  Text(
+                    'Amount: ₹${data['total_amount']?.toString() ?? '0'}',
+                    style: const TextStyle(fontSize: 12, color: Colors.white70),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -153,11 +157,6 @@ class _AuthWrapperState extends State<AuthWrapper> {
     );
   }
 
-  BuildContext? _getScaffoldContext() {
-    return navigatorKey.currentContext;
-  }
-
-  // ── Auth handling (your original code) ─────
   void _handleAuth() {
     _authSubscription = Supabase.instance.client.auth.onAuthStateChange.listen((
       data,
@@ -167,7 +166,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
   }
 
   Future<void> _checkUser(User? user) async {
-    setState(() => _isLoading = true);
+    if (mounted) setState(() => _isLoading = true);
 
     if (user == null) {
       debugPrint('🔒 No authenticated user - showing login');
@@ -181,6 +180,15 @@ class _AuthWrapperState extends State<AuthWrapper> {
     }
 
     debugPrint('👤 Authenticated user: ${user.id}');
+
+    try {
+      await NotificationService().saveFcmToken();
+      debugPrint('✅ FCM token saved for vendor ${user.id}');
+    } catch (e) {
+      debugPrint('⚠️ Failed to save FCM token: $e');
+    }
+
+    _listenToNewBookings();
 
     final profile = await _authService.getVendorProfile();
 
@@ -226,10 +234,13 @@ class _AuthWrapperState extends State<AuthWrapper> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(
+          child: CircularProgressIndicator(color: Color(0xFFFFC107)),
+        ),
+      );
     }
     return _currentWidget ?? const LoginPage();
   }
 }
-
-

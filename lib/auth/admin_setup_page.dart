@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../utils/constants.dart';
 
-/// Placeholder page for Admin accounts that haven't completed setup yet.
-/// Full implementation coming soon.
 class AdminSetupPage extends StatelessWidget {
   const AdminSetupPage({super.key});
 

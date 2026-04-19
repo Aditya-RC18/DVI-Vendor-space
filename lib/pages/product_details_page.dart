@@ -39,17 +39,19 @@ class _ProductListPageState extends State<ProductListPage> {
       try {
         await _supabase.from('products').delete().eq('id', id);
         if (mounted) {
-          // Force rebuild to refresh StreamBuilder
           setState(() {});
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Product deleted successfully")),
+            const SnackBar(
+              content: Text("Product deleted successfully"),
+              backgroundColor: Colors.green,
+            ),
           );
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text("Error: $e")));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red),
+          );
         }
       }
     }
@@ -81,7 +83,34 @@ class _ProductListPageState extends State<ProductListPage> {
           final products = snapshot.data!;
 
           if (products.isEmpty) {
-            return const Center(child: Text("No products found."));
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.inventory_2_outlined,
+                    size: 60,
+                    color: Colors.grey.shade400,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    "No products yet",
+                    style: GoogleFonts.urbanist(
+                      fontSize: 18,
+                      color: Colors.grey,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    "Tap + to add your first product",
+                    style: GoogleFonts.urbanist(
+                      fontSize: 14,
+                      color: Colors.grey.shade400,
+                    ),
+                  ),
+                ],
+              ),
+            );
           }
 
           return ListView.builder(
@@ -91,8 +120,8 @@ class _ProductListPageState extends State<ProductListPage> {
               final product = products[index];
               List<dynamic> images = [];
 
-              // Correct parsing of image_urls
-              final imageUrlData = product['image_urls'];
+              // ✅ Fixed: use 'image_url' not 'image_urls'
+              final imageUrlData = product['image_url'];
               if (imageUrlData != null) {
                 try {
                   if (imageUrlData is List) {
@@ -108,7 +137,6 @@ class _ProductListPageState extends State<ProductListPage> {
 
               final bool isLowStock = (product['quantity'] ?? 0) < 5;
 
-              // Inside your ListView.builder itemBuilder
               return Card(
                 margin: const EdgeInsets.only(bottom: 12),
                 shape: RoundedRectangleBorder(
@@ -116,22 +144,26 @@ class _ProductListPageState extends State<ProductListPage> {
                 ),
                 elevation: 2,
                 child: ExpansionTile(
-                  trailing: const SizedBox.shrink(), // Keeps UI clean
+                  trailing: const SizedBox.shrink(),
                   tilePadding: const EdgeInsets.symmetric(
                     horizontal: 16,
                     vertical: 8,
                   ),
-                  // COLLAPSED STATE: Only Name and Stock
                   title: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        product['name'] ?? "No Name",
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 17,
+                      Expanded(
+                        child: Text(
+                          product['name'] ?? "No Name",
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 17,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
+                      const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 8,
@@ -154,7 +186,6 @@ class _ProductListPageState extends State<ProductListPage> {
                       ),
                     ],
                   ),
-                  // EXPANDED STATE: Images, Prices, Category, and Weight
                   children: [
                     Padding(
                       padding: const EdgeInsets.all(16.0),
@@ -163,30 +194,69 @@ class _ProductListPageState extends State<ProductListPage> {
                         children: [
                           const Divider(),
 
-                          // Product Image (Restored plural image_urls logic)
-                          // Inside the ExpansionTile 'children' list
+                          // ✅ Product image
                           if (images.isNotEmpty)
                             Padding(
                               padding: const EdgeInsets.only(bottom: 16),
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(10),
                                 child: Image.network(
-                                  images[0], // The Supabase Public URL
+                                  images[0].toString(),
                                   height: 180,
                                   width: double.infinity,
                                   fit: BoxFit.cover,
-                                  // Error builder handles cases where the URL might be expired or blocked
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return Container(
-                                      height: 180,
-                                      color: Colors.grey.shade200,
-                                      child: const Icon(
-                                        Icons.broken_image,
-                                        size: 50,
+                                  loadingBuilder:
+                                      (context, child, loadingProgress) {
+                                        if (loadingProgress == null)
+                                          return child;
+                                        return Container(
+                                          height: 180,
+                                          color: Colors.grey.shade200,
+                                          child: const Center(
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                  errorBuilder: (context, error, stackTrace) =>
+                                      Container(
+                                        height: 180,
+                                        color: Colors.grey.shade200,
+                                        child: const Icon(
+                                          Icons.broken_image,
+                                          size: 50,
+                                        ),
                                       ),
-                                    );
-                                  },
                                 ),
+                              ),
+                            )
+                          else
+                            Container(
+                              height: 120,
+                              width: double.infinity,
+                              margin: const EdgeInsets.only(bottom: 16),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade100,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.image_outlined,
+                                    size: 40,
+                                    color: Colors.grey.shade400,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'No image uploaded',
+                                    style: TextStyle(
+                                      color: Colors.grey.shade500,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
 
@@ -268,7 +338,8 @@ class _ProductListPageState extends State<ProductListPage> {
                           ),
 
                           const SizedBox(height: 12),
-                          if (product['dimensions'] != null)
+                          if (product['dimensions'] != null &&
+                              product['dimensions'].toString().isNotEmpty)
                             Text(
                               "Weight & Dimensions: ${product['dimensions']}",
                               style: const TextStyle(
@@ -279,7 +350,6 @@ class _ProductListPageState extends State<ProductListPage> {
                             ),
 
                           const SizedBox(height: 16),
-                          // Action Buttons moved to bottom of expansion
                           Row(
                             mainAxisAlignment: MainAxisAlignment.end,
                             children: [
@@ -332,7 +402,6 @@ class _ProductListPageState extends State<ProductListPage> {
             context,
             MaterialPageRoute(builder: (context) => const AddProductPage()),
           );
-          // Refresh UI if new product added
           if (result == true && mounted) setState(() {});
         },
         label: const Text(
