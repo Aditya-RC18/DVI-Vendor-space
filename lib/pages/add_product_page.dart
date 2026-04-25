@@ -19,6 +19,7 @@ class _AddProductPageState extends State<AddProductPage> {
   bool _isLoading = false;
 
   final _nameController = TextEditingController();
+  final _cityController = TextEditingController();
   final _descController = TextEditingController();
   final _priceController = TextEditingController();
   final _discountController = TextEditingController();
@@ -48,6 +49,7 @@ class _AddProductPageState extends State<AddProductPage> {
       _discountController.text = p['discount_price']?.toString() ?? '';
       _qtyController.text = p['quantity']?.toString() ?? '';
       _dimsController.text = p['dimensions'] ?? '';
+      _cityController.text = p['city'] ?? '';
 
       final imageUrlData = p['image_url'];
       if (imageUrlData != null && imageUrlData.isNotEmpty) {
@@ -76,6 +78,7 @@ class _AddProductPageState extends State<AddProductPage> {
     _discountController.dispose();
     _qtyController.dispose();
     _dimsController.dispose();
+    _cityController.dispose();
     super.dispose();
   }
 
@@ -156,6 +159,7 @@ class _AddProductPageState extends State<AddProductPage> {
         'discount_price': double.tryParse(_discountController.text),
         'quantity': int.tryParse(_qtyController.text) ?? 0,
         'dimensions': _dimsController.text.trim(),
+        'city': _cityController.text.trim(), // ← add this
       };
 
       String productId;
@@ -174,7 +178,6 @@ class _AddProductPageState extends State<AddProductPage> {
         productId = res['id'].toString();
       }
 
-      // ── Use _selectedImageBytes instead of _selectedImages ──
       if (_selectedImageBytes.isNotEmpty) {
         final newUrls = await _uploadImages(productId);
         final allUrls = [..._existingImageUrls, ...newUrls];
@@ -184,6 +187,35 @@ class _AddProductPageState extends State<AddProductPage> {
             .update({'image_url': imageUrlJson})
             .eq('id', productId);
         debugPrint('✅ Images saved: $imageUrlJson');
+
+        final categoryIdMap = {
+          'Photography': 1,
+          'Mehndi Artist': 2,
+          'Make-Up Artist': 3,
+          'Caterers': 4,
+          'DJ & Bands': 5,
+          'Decorators': 6,
+          'Pandits': 7,
+          'Invites & Gifts 🎁': 8,
+        };
+
+        final categoryId = categoryIdMap[_selectedCategory];
+        if (categoryId != null) {
+          await _supabase.from('vendor_cards').upsert({
+            'vendor_id': userId,
+            'product_id': productId,
+            'category_id': categoryId,
+            'studio_name': _nameController.text.trim(),
+            'original_price': double.tryParse(_priceController.text) ?? 0.0,
+            'discounted_price':
+                double.tryParse(_discountController.text) ?? 0.0,
+            'image_path': newUrls.isNotEmpty ? newUrls.first : '',
+            'service_tags': [],
+            'quality_tags': [],
+            'city': _cityController.text.trim(), // ← actual city now
+          }, onConflict: 'product_id');
+          debugPrint('✅ vendor_cards synced');
+        }
       } else if (_existingImageUrls.isNotEmpty) {
         final imageUrlJson = jsonEncode(_existingImageUrls);
         await _supabase
@@ -205,6 +237,7 @@ class _AddProductPageState extends State<AddProductPage> {
         _discountController.clear();
         _qtyController.clear();
         _dimsController.clear();
+        _cityController.clear(); // ← add this
         setState(() {
           _selectedImageBytes.clear();
           _selectedImageNames.clear();
@@ -466,6 +499,16 @@ class _AddProductPageState extends State<AddProductPage> {
                 controller: _dimsController,
                 decoration: const InputDecoration(
                   labelText: "Weight & Dimensions (e.g. 2kg, 30x20x10cm)",
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 16), // ← add this
+              TextFormField(
+                controller: _cityController,
+                validator: (v) =>
+                    v == null || v.isEmpty ? 'City is required' : null,
+                decoration: const InputDecoration(
+                  labelText: "City",
                   border: OutlineInputBorder(),
                 ),
               ),
