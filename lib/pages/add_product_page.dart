@@ -3,7 +3,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:http/http.dart' as http;
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class AddProductPage extends StatefulWidget {
   final Map<String, dynamic>? existingProduct;
@@ -80,6 +82,68 @@ class _AddProductPageState extends State<AddProductPage> {
     _dimsController.dispose();
     _cityController.dispose();
     super.dispose();
+  }
+
+  // Add this method to _AddProductPageState
+  Future<void> _notifyAllClients(String category) async {
+    try {
+      final supabaseUrl = dotenv.env['SUPABASE_URL'] ?? '';
+      final anonKey = dotenv.env['SUPABASE_ANON_KEY'] ?? '';
+      final vendorId = _supabase.auth.currentUser?.id ?? '';
+
+      if (supabaseUrl.isEmpty || anonKey.isEmpty || vendorId.isEmpty) {
+        debugPrint('⚠️ Missing credentials or vendor ID');
+        return;
+      }
+
+      final categoryIdMap = {
+        'Photography': 1,
+        'Mehndi Artist': 2,
+        'Make-Up Artist': 3,
+        'Caterers': 4,
+        'DJ & Bands': 5,
+        'Decorators': 6,
+        'Pandits': 7,
+        'Invites & Gifts 🎁': 8,
+      };
+
+      final categoryId = categoryIdMap[category] ?? 1;
+
+      // Get vendor's studio name from vendor_cards
+      final vendorCardRes = await _supabase
+          .from('vendor_cards')
+          .select('studio_name')
+          .eq('vendor_id', vendorId)
+          .limit(1)
+          .maybeSingle();
+
+      final studioName =
+          vendorCardRes?['studio_name'] as String? ?? 'Your favourite vendor';
+
+      debugPrint(
+        '🔔 Notifying clients — Studio: $studioName, Category: $category',
+      );
+
+      final response = await http.post(
+        Uri.parse('$supabaseUrl/functions/v1/notify-all-clients'),
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': anonKey,
+          'Authorization': 'Bearer $anonKey',
+        },
+        body: jsonEncode({
+          'vendor_id': vendorId,
+          'studio_name': studioName,
+          'category_id': categoryId,
+        }),
+      );
+
+      debugPrint(
+        '📡 Notification response: ${response.statusCode} ${response.body}',
+      );
+    } catch (e) {
+      debugPrint('⚠️ Failed to notify clients: $e');
+    }
   }
 
   Future<void> _fetchCategories() async {
@@ -159,7 +223,7 @@ class _AddProductPageState extends State<AddProductPage> {
         'discount_price': double.tryParse(_discountController.text),
         'quantity': int.tryParse(_qtyController.text) ?? 0,
         'dimensions': _dimsController.text.trim(),
-        'city': _cityController.text.trim(), // ← add this
+        'city': _cityController.text.trim(),
       };
 
       String productId;
@@ -212,7 +276,7 @@ class _AddProductPageState extends State<AddProductPage> {
             'image_path': newUrls.isNotEmpty ? newUrls.first : '',
             'service_tags': [],
             'quality_tags': [],
-            'city': _cityController.text.trim(), // ← actual city now
+            'city': _cityController.text.trim(),
           }, onConflict: 'product_id');
           debugPrint('✅ vendor_cards synced');
         }
@@ -223,6 +287,10 @@ class _AddProductPageState extends State<AddProductPage> {
             .update({'image_url': imageUrlJson})
             .eq('id', productId);
       }
+
+      // ✅ Notify all clients BEFORE pop
+      // Notify clients about new service
+      await _notifyAllClients(_selectedCategory ?? 'Event Services');
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -237,7 +305,7 @@ class _AddProductPageState extends State<AddProductPage> {
         _discountController.clear();
         _qtyController.clear();
         _dimsController.clear();
-        _cityController.clear(); // ← add this
+        _cityController.clear();
         setState(() {
           _selectedImageBytes.clear();
           _selectedImageNames.clear();
